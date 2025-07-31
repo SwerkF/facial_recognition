@@ -1,1 +1,5 @@
-cv2
+opencv-python
+ipykernel
+numpy
+tensorflow
+scikit-learn
