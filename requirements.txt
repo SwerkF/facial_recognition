@@ -3,3 +3,4 @@ ipykernel
 numpy
 tensorflow
 scikit-learn
+pandas
