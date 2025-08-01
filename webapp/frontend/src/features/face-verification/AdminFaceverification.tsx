@@ -272,7 +272,7 @@ const AdminFaceVerification: React.FC = () => {// États
               transition={{ delay: 0.7, duration: 0.6 }}
               className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6"
             >
-              {verifications.map((verification, index) => (
+              {verifications.slice().reverse().map((verification, index) => (
                 <motion.div
                   key={`${verification.createdAt}-${index}`}
                   initial={{ opacity: 0, y: 20 }}
