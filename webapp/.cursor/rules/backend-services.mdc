@@ -1,0 +1,241 @@
+---
+description: Rules for creating customs services for the backend.
+globs: 
+alwaysApply: false
+---
+# Règles pour les Services Backend
+
+## Structure et Organisation
+
+Les services contiennent la logique métier et les intégrations externes. Ils doivent suivre cette structure :
+
+```typescript
+import { logger } from '@/utils/logger';
+import { ExternalLibrary } from 'external-lib';
+
+class EntityService {
+    private logger = logger.child({
+        module: '[App][EntityService]',
+    });
+    
+    private client: ExternalLibrary; // Si service externe
+
+    constructor() {
+        // Initialisation des clients externes
+        this.client = new ExternalLibrary({
+            config: process.env.CONFIG,
+        });
+    }
+
+    async businessMethod(param: string): Promise<ResultType> {
+        try {
+            this.logger.info('Starting business operation', { param });
+            
+            // Logique métier
+            const result = await this.performOperation(param);
+            
+            this.logger.info('Operation completed successfully');
+            return result;
+        } catch (error) {
+            this.logger.error('Error in business operation:', error);
+            throw error;
+        }
+    }
+
+    private async performOperation(param: string): Promise<ResultType> {
+        // Implémentation privée
+    }
+}
+
+export const entityService = new EntityService();
+```
+
+## Types de Services
+
+### 1. Services Métier (AuthService)
+Gèrent la logique applicative complexe :
+
+```typescript
+class AuthService {
+    private logger = logger.child({
+        module: '[App][AuthService]',
+    });
+
+    async generateToken(user: User, request: FastifyRequest): Promise<{accessToken: string; refreshToken: string} | null> {
+        const agent = request.headers['user-agent'];
+        const ip = request.ip;
+
+        if (!user.id) return null;
+
+        // Création des tokens en base
+        const accessToken = await prisma.token.create({
+            data: {
+                token: sign(user, process.env.JWT_SECRET as string, { expiresIn: '24h' }),
+                type: 'access_token',
+                scopes: JSON.stringify(['read', 'write']),
+                deviceName: agent ? agent.split(' ')[0] : 'Unknown',
+                deviceIp: ip,
+                ownedById: user.id,
+                expiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000),
+            },
+        });
+
+        // Logique similaire pour refreshToken...
+        return { accessToken: accessToken.token, refreshToken: refreshToken.token };
+    }
+}
+```
+
+### 2. Services Infrastructure (CacheService/RedisService)
+Gèrent les systèmes externes avec interface :
+
+```typescript
+interface ICacheService {
+    set(key: string, value: any, ttlSeconds?: number): Promise<string>;
+    get(key: string): Promise<any | null>;
+    del(key: string): Promise<number>;
+    // ... autres méthodes
+}
+
+class RedisService implements ICacheService {
+    private client: Redis;
+    private logger = logger.child({
+        module: '[App][Redis]',
+    });
+
+    constructor() {
+        this.client = new Redis({
+            host: process.env.REDIS_HOST,
+            password: process.env.REDIS_PASSWORD,
+            port: process.env.REDIS_PORT ? parseInt(process.env.REDIS_PORT) : 6379,
+        });
+        
+        this.setupEventHandlers();
+    }
+
+    private setupEventHandlers(): void {
+        this.client.on('connect', () => {
+            this.logger.info('Redis connection established');
+        });
+        // ... autres handlers
+    }
+
+    async set(key: string, value: any, ttlSeconds?: number): Promise<string> {
+        try {
+            const serializedValue = JSON.stringify(value);
+            
+            if (ttlSeconds) {
+                await this.client.setex(key, ttlSeconds, serializedValue);
+            } else {
+                await this.client.set(key, serializedValue);
+            }
+            
+            return 'OK';
+        } catch (error) {
+            this.logger.error(`Error storing key ${key}:`, error);
+            throw error;
+        }
+    }
+}
+```
+
+### 3. Services de Fichiers (MinioService)
+Gèrent le stockage de fichiers :
+
+```typescript
+class MinioService {
+    private minioClient: Minio.Client;
+    private bucketName: string;
+    private logger = logger.child({
+        module: '[App][MinioService]',
+    });
+
+    constructor() {
+        this.bucketName = process.env.MINIO_BUCKET || 'files';
+        this.minioClient = new Minio.Client({
+            endPoint: process.env.MINIO_ENDPOINT || 'localhost',
+            port: process.env.MINIO_PORT ? parseInt(process.env.MINIO_PORT, 10) : 9000,
+            useSSL: process.env.MINIO_USE_SSL === 'true',
+            accessKey: process.env.MINIO_ACCESS_KEY || 'minioadmin',
+            secretKey: process.env.MINIO_SECRET_KEY || 'minioadmin',
+        });
+    }
+
+    async uploadFile(bucketName: string, file: ExtendedFile): Promise<any> {
+        try {
+            await this.checkBucket(bucketName);
+            const fileName = `${Date.now()}-${file.fieldname}.${file.mimetype?.split('/')[1]}`;
+            
+            await this.minioClient.putObject(
+                bucketName,
+                fileName,
+                await file.toBuffer!(),
+                file.file.bytesRead,
+                { 'Content-Type': file.mimetype }
+            );
+
+            return { name: fileName, mimetype: file.mimetype, size: file.file.bytesRead };
+        } catch (err) {
+            this.logger.error(`Error uploading file:`, err);
+            throw err;
+        }
+    }
+}
+```
+
+## Conventions Obligatoires
+
+### Structure de classe
+- **Toujours** utiliser une classe avec constructeur pour l'initialisation
+- Export d'une instance unique en bas du fichier
+- Logger avec module spécifique dans chaque service
+
+### Gestion des erreurs
+- **Toujours** logger les erreurs avec contexte
+- Laisser les erreurs remonter au controller (ne pas les absorber)
+- Utiliser try/catch pour les opérations critiques
+
+### Configuration
+- **Toujours** valider les variables d'environnement dans le constructeur
+- Fournir des valeurs par défaut raisonnables
+- Lever une erreur si config obligatoire manquante
+
+### Logging
+- Logger les opérations importantes (start/success/error)
+- Inclure des métadonnées utiles pour le debugging
+- Utiliser les bons niveaux : info, warn, error
+
+### Interfaces pour services externes
+- Définir une interface pour les services avec clients externes
+- Facilite les tests et le changement d'implémentation
+- Exemple : `ICacheService`, `IStorageService`
+
+### Méthodes privées
+- Utiliser `private` pour les méthodes internes
+- Séparer la logique publique de l'implémentation
+- Facilite les tests unitaires
+
+### Initialisation asynchrone
+- Si nécessaire, créer une méthode `init()` publique
+- Ne pas faire d'opérations async dans le constructeur
+- Gérer la connection/disconnection proprement
+
+### Nommage
+- Fichiers : `authService.ts`, `cacheService.ts`
+- Classes : `AuthService`, `CacheService`
+- Instances : `authService`, `cacheService`
+- Préfixe/suffixe cohérent selon le type
+
+### Export de factory si multiple implémentations
+```typescript
+// Si plusieurs implémentations possibles
+function createCacheService(): ICacheService {
+    if (process.env.CACHE_TYPE === 'redis') {
+        return new RedisService();
+    }
+    return new MemoryCacheService();
+}
+
+export const cacheService = createCacheService();
+```
+

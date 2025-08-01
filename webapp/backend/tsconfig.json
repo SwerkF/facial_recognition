@@ -1,0 +1,32 @@
+{
+    "compilerOptions": {
+        "jsx": "react-jsx",
+        "esModuleInterop": true,
+        "skipLibCheck": true,
+        "target": "ES2020",
+        "allowJs": true,
+        "checkJs": false,
+        "resolveJsonModule": true,
+        "moduleDetection": "force",
+        "isolatedModules": true,
+        "experimentalDecorators": true,
+        "emitDecoratorMetadata": true,
+        "strictPropertyInitialization": false,
+        "forceConsistentCasingInFileNames": true,
+        "strict": true,
+        "module": "commonjs",
+        "moduleResolution": "node",
+        "outDir": "dist",
+        "lib": ["ES2020"],
+        "types": ["node"],
+        "baseUrl": ".",
+        "paths": {
+            "@/*": ["./src/*"],
+            "@shared/*": ["../shared/*"]
+        },
+        "incremental": true,
+        "tsBuildInfoFile": "./node_modules/.cache/.tsbuildinfo"
+    },
+    "include": ["src/**/*", "../shared/**/*", "src/index.d.ts"],
+    "exclude": ["node_modules", "dist"]
+}

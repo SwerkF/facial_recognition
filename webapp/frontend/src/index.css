@@ -1,0 +1,301 @@
+@import url('https://fonts.googleapis.com/css2?family=Poppins:ital,wght@0,100;0,200;0,300;0,400;0,500;0,600;0,700;0,800;0,900;1,100;1,200;1,300;1,400;1,500;1,600;1,700;1,800;1,900&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@100;200;300;400;500;600;700;800;900&display=swap');
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+html {
+    left: 0;
+    right: 0;
+    top: 0;
+    bottom: 0;
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+}
+
+body {
+    font-family: 'Inter', 'Poppins', sans-serif;
+    background: #090607;
+    color: #f8fafc;
+}
+
+.font-mono {
+    font-family: 'Inter', monospace;
+}
+
+@layer base {
+    :root {
+        --radius: 0.75rem;
+    }
+}
+
+@layer utilities {
+    /* Effets de lueur modernes */
+    .glow-purple {
+        box-shadow: 0 0 20px rgba(172, 30, 214, 0.3);
+    }
+    
+    .glow-purple-intense {
+        box-shadow: 0 0 40px rgba(172, 30, 214, 0.6);
+    }
+
+    .glow-pink {
+        box-shadow: 0 0 20px rgba(194, 110, 115, 0.3);
+    }
+
+    /* Gradient moderne */
+    .gradient-modern {
+        background: linear-gradient(135deg, #ac1ed6 0%, #c26e73 100%);
+    }
+
+    /* Animation de lueur subtile */
+    .pulse-glow {
+        animation: pulse-glow 2s ease-in-out infinite alternate;
+    }
+    
+    @keyframes pulse-glow {
+        0% {
+            box-shadow: 0 0 20px rgba(172, 30, 214, 0.2);
+        }
+        100% {
+            box-shadow: 0 0 30px rgba(172, 30, 214, 0.4);
+        }
+    }
+
+    /* Effet de scan moderne */
+    .scan-modern {
+        position: relative;
+        overflow: hidden;
+    }
+    
+    .scan-modern::before {
+        content: '';
+        position: absolute;
+        top: 0;
+        left: -100%;
+        width: 100%;
+        height: 100%;
+        background: linear-gradient(90deg, transparent, rgba(172, 30, 214, 0.2), transparent);
+        animation: scan-modern 3s infinite;
+    }
+    
+    @keyframes scan-modern {
+        0% {
+            left: -100%;
+        }
+        100% {
+            left: 100%;
+        }
+    }
+
+    /* Grille subtile */
+    .subtle-grid {
+        background-image: 
+            linear-gradient(rgba(172, 30, 214, 0.05) 1px, transparent 1px),
+            linear-gradient(90deg, rgba(172, 30, 214, 0.05) 1px, transparent 1px);
+        background-size: 40px 40px;
+    }
+
+    /* Animation de particules flottantes */
+    .float-particle {
+        animation: float-particle 6s ease-in-out infinite;
+    }
+    
+    @keyframes float-particle {
+        0%, 100% {
+            transform: translateY(0px) translateX(0px);
+            opacity: 0.3;
+        }
+        33% {
+            transform: translateY(-10px) translateX(5px);
+            opacity: 0.6;
+        }
+        66% {
+            transform: translateY(5px) translateX(-5px);
+            opacity: 0.4;
+        }
+    }
+
+    /* Effet holographique moderne */
+    .holographic-modern {
+        background: linear-gradient(45deg, 
+            rgba(172, 30, 214, 0.1) 0%,
+            rgba(194, 110, 115, 0.1) 50%,
+            rgba(172, 30, 214, 0.1) 100%
+        );
+        background-size: 200% 200%;
+        animation: holographic-modern 4s ease infinite;
+    }
+    
+    @keyframes holographic-modern {
+        0% {
+            background-position: 0% 50%;
+        }
+        50% {
+            background-position: 100% 50%;
+        }
+        100% {
+            background-position: 0% 50%;
+        }
+    }
+
+    /* Effet de shimmer */
+    .shimmer {
+        position: relative;
+        overflow: hidden;
+    }
+    
+    .shimmer::before {
+        content: '';
+        position: absolute;
+        top: 0;
+        left: -100%;
+        width: 100%;
+        height: 100%;
+        background: linear-gradient(90deg, 
+            transparent, 
+            rgba(255, 255, 255, 0.1), 
+            transparent
+        );
+        animation: shimmer 2s infinite;
+    }
+    
+    @keyframes shimmer {
+        0% {
+            left: -100%;
+        }
+        100% {
+            left: 100%;
+        }
+    }
+
+    /* Pulsation moderne */
+    .pulse-modern {
+        animation: pulse-modern 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+    }
+    
+    @keyframes pulse-modern {
+        0%, 100% {
+            opacity: 1;
+            transform: scale(1);
+        }
+        50% {
+            opacity: 0.8;
+            transform: scale(1.02);
+        }
+    }
+
+    /* Animation de loading moderne */
+    .loading-modern {
+        animation: loading-modern 1.5s ease-in-out infinite;
+    }
+    
+    @keyframes loading-modern {
+        0%, 80%, 100% {
+            opacity: 0.3;
+            transform: scale(1);
+        }
+        40% {
+            opacity: 1;
+            transform: scale(1.1);
+        }
+    }
+
+    /* Fond avec motif subtil */
+    .pattern-subtle {
+        background-image: 
+            radial-gradient(circle at 2px 2px, rgba(172, 30, 214, 0.15) 1px, transparent 0);
+        background-size: 40px 40px;
+    }
+
+    /* Animation de rotation lente */
+    .rotate-slow {
+        animation: rotate-slow 20s linear infinite;
+    }
+    
+    @keyframes rotate-slow {
+        from {
+            transform: rotate(0deg);
+        }
+        to {
+            transform: rotate(360deg);
+        }
+    }
+
+    /* Dégradé animé moderne */
+    .gradient-animated {
+        background: linear-gradient(-45deg, #ac1ed6, #c26e73, #8b5cf6, #f59e0b);
+        background-size: 400% 400%;
+        animation: gradient-animated 6s ease infinite;
+    }
+    
+    @keyframes gradient-animated {
+        0% {
+            background-position: 0% 50%;
+        }
+        50% {
+            background-position: 100% 50%;
+        }
+        100% {
+            background-position: 0% 50%;
+        }
+    }
+
+    /* Effet de bordure progressive */
+    .border-progress {
+        position: relative;
+    }
+    
+    .border-progress::before {
+        content: '';
+        position: absolute;
+        inset: 0;
+        padding: 2px;
+        background: linear-gradient(45deg, #ac1ed6, #c26e73);
+        border-radius: inherit;
+        mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+        mask-composite: xor;
+    }
+
+    /* Animation de fondu entrant */
+    .fade-in-up {
+        animation: fade-in-up 0.6s ease-out;
+    }
+    
+    @keyframes fade-in-up {
+        from {
+            opacity: 0;
+            transform: translateY(20px);
+        }
+        to {
+            opacity: 1;
+            transform: translateY(0);
+        }
+    }
+
+    /* Effet de lueur au survol */
+    .hover-glow {
+        transition: all 0.3s ease;
+    }
+    
+    .hover-glow:hover {
+        box-shadow: 0 0 30px rgba(172, 30, 214, 0.4);
+        transform: translateY(-2px);
+    }
+
+    /* Animation de progress bar */
+    .progress-fill {
+        animation: progress-fill 1s ease-out;
+    }
+    
+    @keyframes progress-fill {
+        from {
+            width: 0%;
+        }
+        to {
+            width: var(--progress-width);
+        }
+    }
+}

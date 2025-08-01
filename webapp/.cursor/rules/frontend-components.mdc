@@ -1,0 +1,557 @@
+---
+description: Rules for creating customs components for the frontend.
+globs: 
+alwaysApply: false
+---
+# Règles Frontend Components - Composants Réutilisables
+
+## Structure des Composants
+
+### Organisation UI Components
+```
+frontend/src/components/ui/
+├── Button/
+│   ├── Button.tsx          # Composant principal
+│   ├── Button.spec.tsx     # Tests Jest
+│   └── index.ts            # Export
+├── Input/
+│   ├── Input.tsx
+│   ├── Input.spec.tsx
+│   └── index.ts
+├── Modal/
+│   ├── Modal.tsx
+│   ├── Modal.spec.tsx
+│   └── index.ts
+└── index.ts                # Barrel exports
+```
+
+### Structure d'un Composant
+- **Un dossier par composant** avec son nom en PascalCase
+- **Fichier principal** : NomComposant.tsx
+- **Tests** : NomComposant.spec.tsx
+- **Export** : index.ts pour le barrel export
+
+## Pattern Composant UI
+
+### Composant de Base avec Variants
+```typescript
+import type React from 'react';
+import { HTMLMotionProps, motion } from 'framer-motion';
+import { cva, type VariantProps } from 'class-variance-authority';
+import { cn } from '@/lib/utils';
+
+// Définition des variants avec CVA
+const buttonVariants = cva(
+    // Classes de base
+    'inline-flex items-center justify-center rounded-md text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:opacity-50 disabled:pointer-events-none ring-offset-background',
+    {
+        variants: {
+            variant: {
+                primary: 'bg-blue-600 text-white hover:bg-blue-700',
+                secondary: 'bg-gray-100 text-gray-900 hover:bg-gray-200',
+                danger: 'bg-red-600 text-white hover:bg-red-700',
+                ghost: 'hover:bg-gray-100 hover:text-gray-900',
+            },
+            size: {
+                sm: 'h-9 px-3 text-xs',
+                default: 'h-10 py-2 px-4',
+                lg: 'h-11 px-8',
+            },
+        },
+        defaultVariants: {
+            variant: 'primary',
+            size: 'default',
+        },
+    }
+);
+
+// Interface des props
+interface ButtonProps
+    extends Omit<React.ButtonHTMLAttributes<HTMLButtonElement>, keyof HTMLMotionProps<'button'>>,
+        HTMLMotionProps<'button'>,
+        VariantProps<typeof buttonVariants> {
+    isLoading?: boolean;
+    loadingText?: string;
+    children: React.ReactNode;
+}
+
+// Composant avec Framer Motion
+export const Button: React.FC<ButtonProps> = ({
+    children,
+    variant,
+    size,
+    isLoading = false,
+    loadingText = 'Chargement...',
+    disabled,
+    className,
+    ...props
+}) => {
+    return (
+        <motion.button
+            whileHover={{ scale: disabled || isLoading ? 1 : 1.02 }}
+            whileTap={{ scale: disabled || isLoading ? 1 : 0.98 }}
+            disabled={disabled || isLoading}
+            className={cn(buttonVariants({ variant, size, className }))}
+            {...props}
+        >
+            {isLoading && (
+                <svg
+                    className="-ml-1 mr-3 h-5 w-5 animate-spin"
+                    xmlns="http://www.w3.org/2000/svg"
+                    fill="none"
+                    viewBox="0 0 24 24"
+                >
+                    <circle
+                        className="opacity-25"
+                        cx="12"
+                        cy="12"
+                        r="10"
+                        stroke="currentColor"
+                        strokeWidth="4"
+                    />
+                    <path
+                        className="opacity-75"
+                        fill="currentColor"
+                        d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
+                    />
+                </svg>
+            )}
+            {isLoading ? loadingText : children}
+        </motion.button>
+    );
+};
+```
+
+### Composant Input avec Validation
+```typescript
+import React, { forwardRef } from 'react';
+import { cn } from '@/lib/utils';
+
+interface InputProps extends React.InputHTMLAttributes<HTMLInputElement> {
+    label?: string;
+    error?: string;
+    helperText?: string;
+    startIcon?: React.ReactNode;
+    endIcon?: React.ReactNode;
+}
+
+export const Input = forwardRef<HTMLInputElement, InputProps>(
+    ({ 
+        label, 
+        error, 
+        helperText, 
+        startIcon, 
+        endIcon, 
+        className, 
+        type = 'text',
+        ...props 
+    }, ref) => {
+        return (
+            <div className="space-y-1">
+                {label && (
+                    <label className="block text-sm font-medium text-gray-700">
+                        {label}
+                        {props.required && <span className="text-red-500 ml-1">*</span>}
+                    </label>
+                )}
+                
+                <div className="relative">
+                    {startIcon && (
+                        <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                            {startIcon}
+                        </div>
+                    )}
+                    
+                    <input
+                        ref={ref}
+                        type={type}
+                        className={cn(
+                            'block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm',
+                            startIcon && 'pl-10',
+                            endIcon && 'pr-10',
+                            error && 'border-red-300 focus:border-red-500 focus:ring-red-500',
+                            className
+                        )}
+                        aria-invalid={error ? 'true' : 'false'}
+                        aria-describedby={error ? `${props.id}-error` : undefined}
+                        {...props}
+                    />
+                    
+                    {endIcon && (
+                        <div className="absolute inset-y-0 right-0 pr-3 flex items-center">
+                            {endIcon}
+                        </div>
+                    )}
+                </div>
+                
+                {error && (
+                    <p id={`${props.id}-error`} className="text-sm text-red-600">
+                        {error}
+                    </p>
+                )}
+                
+                {helperText && !error && (
+                    <p className="text-sm text-gray-500">
+                        {helperText}
+                    </p>
+                )}
+            </div>
+        );
+    }
+);
+
+Input.displayName = 'Input';
+```
+
+### Modal avec Portal
+```typescript
+import React, { useEffect } from 'react';
+import { createPortal } from 'react-dom';
+import { motion, AnimatePresence } from 'framer-motion';
+import { X } from 'lucide-react';
+import { cn } from '@/lib/utils';
+
+interface ModalProps {
+    isOpen: boolean;
+    onClose: () => void;
+    title?: string;
+    children: React.ReactNode;
+    size?: 'sm' | 'md' | 'lg' | 'xl';
+    closeOnBackdrop?: boolean;
+}
+
+const sizeClasses = {
+    sm: 'max-w-md',
+    md: 'max-w-lg',
+    lg: 'max-w-2xl',
+    xl: 'max-w-4xl',
+};
+
+export const Modal: React.FC<ModalProps> = ({
+    isOpen,
+    onClose,
+    title,
+    children,
+    size = 'md',
+    closeOnBackdrop = true,
+}) => {
+    // Gestion des touches clavier
+    useEffect(() => {
+        const handleEscape = (e: KeyboardEvent) => {
+            if (e.key === 'Escape' && isOpen) {
+                onClose();
+            }
+        };
+
+        document.addEventListener('keydown', handleEscape);
+        return () => document.removeEventListener('keydown', handleEscape);
+    }, [isOpen, onClose]);
+
+    // Désactiver le scroll du body
+    useEffect(() => {
+        if (isOpen) {
+            document.body.style.overflow = 'hidden';
+        } else {
+            document.body.style.overflow = 'unset';
+        }
+
+        return () => {
+            document.body.style.overflow = 'unset';
+        };
+    }, [isOpen]);
+
+    if (!isOpen) return null;
+
+    const modalContent = (
+        <AnimatePresence>
+            {isOpen && (
+                <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+                    {/* Backdrop */}
+                    <motion.div
+                        initial={{ opacity: 0 }}
+                        animate={{ opacity: 1 }}
+                        exit={{ opacity: 0 }}
+                        className="absolute inset-0 bg-black bg-opacity-50"
+                        onClick={closeOnBackdrop ? onClose : undefined}
+                    />
+
+                    {/* Modal */}
+                    <motion.div
+                        initial={{ opacity: 0, scale: 0.95, y: 20 }}
+                        animate={{ opacity: 1, scale: 1, y: 0 }}
+                        exit={{ opacity: 0, scale: 0.95, y: 20 }}
+                        transition={{ duration: 0.2 }}
+                        className={cn(
+                            'relative bg-white rounded-lg shadow-xl w-full',
+                            sizeClasses[size]
+                        )}
+                        onClick={(e) => e.stopPropagation()}
+                    >
+                        {/* Header */}
+                        {title && (
+                            <div className="flex items-center justify-between p-6 border-b">
+                                <h2 className="text-lg font-semibold text-gray-900">
+                                    {title}
+                                </h2>
+                                <button
+                                    onClick={onClose}
+                                    className="text-gray-400 hover:text-gray-600 transition-colors"
+                                >
+                                    <X size={20} />
+                                </button>
+                            </div>
+                        )}
+
+                        {/* Content */}
+                        <div className={cn('p-6', title && 'pt-0')}>
+                            {children}
+                        </div>
+                    </motion.div>
+                </div>
+            )}
+        </AnimatePresence>
+    );
+
+    return createPortal(modalContent, document.body);
+};
+```
+
+## Tests Jest avec Testing Library
+
+### Configuration Jest
+```javascript
+// jest.config.js (dans le frontend)
+module.exports = {
+    testEnvironment: 'jsdom',
+    setupFilesAfterEnv: ['<rootDir>/src/setupTests.ts'],
+    moduleNameMapping: {
+        '^@/(.*)$': '<rootDir>/src/$1',
+        '^@shared/(.*)$': '<rootDir>/../shared/$1',
+    },
+    transform: {
+        '^.+\\.(ts|tsx)$': 'ts-jest',
+        '^.+\\.svg$': 'jest-transformer-svg',
+    },
+    testMatch: [
+        '<rootDir>/src/**/*.{test,spec}.{ts,tsx}',
+    ],
+    collectCoverageFrom: [
+        'src/**/*.{ts,tsx}',
+        '!src/**/*.d.ts',
+        '!src/main.tsx',
+    ],
+};
+```
+
+### Setup Tests
+```typescript
+// src/setupTests.ts
+import '@testing-library/jest-dom';
+import { cleanup } from '@testing-library/react';
+import { afterEach } from 'vitest';
+
+// Nettoyer après chaque test
+afterEach(() => {
+    cleanup();
+});
+
+// Mock Framer Motion
+jest.mock('framer-motion', () => ({
+    motion: {
+        div: 'div',
+        button: 'button',
+        span: 'span',
+    },
+    AnimatePresence: ({ children }: { children: React.ReactNode }) => children,
+}));
+```
+
+### Tests de Composants
+```typescript
+// Button.spec.tsx
+import '@testing-library/jest-dom';
+import { render, screen, fireEvent } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
+import { Button } from './Button';
+
+describe('Button', () => {
+    it('renders correctly', () => {
+        render(<Button>Test Button</Button>);
+        expect(screen.getByText('Test Button')).toBeInTheDocument();
+    });
+
+    it('applies correct variant classes', () => {
+        render(<Button variant="danger">Danger Button</Button>);
+        const button = screen.getByRole('button');
+        expect(button).toHaveClass('bg-red-600');
+    });
+
+    it('shows loading state', () => {
+        render(
+            <Button isLoading loadingText="Loading...">
+                Submit
+            </Button>
+        );
+        
+        expect(screen.getByText('Loading...')).toBeInTheDocument();
+        expect(screen.queryByText('Submit')).not.toBeInTheDocument();
+    });
+
+    it('handles click events', async () => {
+        const handleClick = jest.fn();
+        const user = userEvent.setup();
+        
+        render(<Button onClick={handleClick}>Click me</Button>);
+        
+        await user.click(screen.getByRole('button'));
+        expect(handleClick).toHaveBeenCalledTimes(1);
+    });
+
+    it('is disabled when loading', () => {
+        render(<Button isLoading>Submit</Button>);
+        expect(screen.getByRole('button')).toBeDisabled();
+    });
+
+    it('is accessible', () => {
+        render(<Button aria-label="Submit form">Submit</Button>);
+        expect(screen.getByLabelText('Submit form')).toBeInTheDocument();
+    });
+});
+```
+
+### Tests avec React Hook Form
+```typescript
+// Input.spec.tsx
+import { render, screen } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
+import { useForm } from 'react-hook-form';
+import { Input } from './Input';
+
+const TestForm = () => {
+    const { register, formState: { errors } } = useForm();
+    
+    return (
+        <form>
+            <Input
+                {...register('email', { required: 'Email requis' })}
+                label="Email"
+                error={errors.email?.message}
+            />
+        </form>
+    );
+};
+
+describe('Input', () => {
+    it('renders with label', () => {
+        render(<Input label="Test Input" />);
+        expect(screen.getByLabelText('Test Input')).toBeInTheDocument();
+    });
+
+    it('shows error message', () => {
+        render(<Input error="This field is required" />);
+        expect(screen.getByText('This field is required')).toBeInTheDocument();
+    });
+
+    it('forwards ref correctly', () => {
+        const ref = React.createRef<HTMLInputElement>();
+        render(<Input ref={ref} />);
+        expect(ref.current).toBeInstanceOf(HTMLInputElement);
+    });
+
+    it('handles user input', async () => {
+        const user = userEvent.setup();
+        render(<Input placeholder="Enter text" />);
+        
+        const input = screen.getByPlaceholderText('Enter text');
+        await user.type(input, 'Hello World');
+        
+        expect(input).toHaveValue('Hello World');
+    });
+});
+```
+
+### Tests de Modal
+```typescript
+// Modal.spec.tsx
+import { render, screen } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
+import { Modal } from './Modal';
+
+describe('Modal', () => {
+    it('renders when open', () => {
+        render(
+            <Modal isOpen={true} onClose={jest.fn()} title="Test Modal">
+                <p>Modal content</p>
+            </Modal>
+        );
+        
+        expect(screen.getByText('Test Modal')).toBeInTheDocument();
+        expect(screen.getByText('Modal content')).toBeInTheDocument();
+    });
+
+    it('does not render when closed', () => {
+        render(
+            <Modal isOpen={false} onClose={jest.fn()} title="Test Modal">
+                <p>Modal content</p>
+            </Modal>
+        );
+        
+        expect(screen.queryByText('Test Modal')).not.toBeInTheDocument();
+    });
+
+    it('calls onClose when X button is clicked', async () => {
+        const onClose = jest.fn();
+        const user = userEvent.setup();
+        
+        render(
+            <Modal isOpen={true} onClose={onClose} title="Test Modal">
+                Content
+            </Modal>
+        );
+        
+        await user.click(screen.getByRole('button'));
+        expect(onClose).toHaveBeenCalledTimes(1);
+    });
+
+    it('closes on escape key', async () => {
+        const onClose = jest.fn();
+        const user = userEvent.setup();
+        
+        render(
+            <Modal isOpen={true} onClose={onClose}>
+                Content
+            </Modal>
+        );
+        
+        await user.keyboard('{Escape}');
+        expect(onClose).toHaveBeenCalledTimes(1);
+    });
+});
+```
+
+## Conventions Composants
+
+### Props Interface
+- **Extends HTML props** : Étendre les props HTML natives
+- **Optional props** : Marquer les props optionnelles avec `?`
+- **Children typing** : `React.ReactNode` pour children
+- **Ref forwarding** : Utiliser `forwardRef` quand nécessaire
+
+### Styling
+- **CVA pour variants** : Class Variance Authority pour les variants
+- **cn() utility** : Merger les classes avec tailwind-merge
+- **Responsive design** : Classes Tailwind responsive
+- **Accessibilité** : ARIA attributes appropriés
+
+### Animation
+- **Framer Motion** : Pour les interactions et animations
+- **Performant** : Éviter les animations coûteuses
+- **Accessible** : Respecter prefers-reduced-motion
+
+### Tests
+- **Un test par fonctionnalité** : Tests focalisés
+- **User interactions** : Tester les interactions utilisateur
+- **Accessibility** : Tester l'accessibilité
+- **Edge cases** : Tester les cas limites
+
+- **Mocking** : Mock les dépendances externes

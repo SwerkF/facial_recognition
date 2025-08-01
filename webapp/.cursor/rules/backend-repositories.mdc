@@ -1,0 +1,183 @@
+---
+description: Rules for creating customs repositories for the backend.
+globs: 
+alwaysApply: false
+---
+# Règles pour les Repositories Backend
+
+## Structure et Organisation
+
+Les repositories gèrent l'accès aux données avec Prisma et doivent suivre cette structure :
+
+```typescript
+import { Prisma, Entity } from '@/config/client';
+import prisma from '@/config/prisma';
+import { FilterService } from '@/services';
+import { PaginationMeta } from '@/types';
+import { logger } from '@/utils/logger';
+
+import { CreateEntityDto, UpdateEntityDto } from '@shared/dto';
+
+class EntityRepository {
+    private logger = logger.child({
+        class: '[App][EntityRepository]',
+    });
+
+    async create(data: CreateEntityDto): Promise<Entity> {
+        return prisma.entity.create({
+            data: {
+                ...data,
+                // transformations spécifiques si nécessaires
+            },
+        });
+    }
+
+    async update(id: string, data: UpdateEntityDto): Promise<Entity> {
+        return prisma.entity.update({
+            where: { id },
+            data,
+        });
+    }
+
+    async delete(id: string): Promise<Entity> {
+        return prisma.entity.delete({
+            where: { id },
+        });
+    }
+
+    async findById(id: string): Promise<Entity | null> {
+        return prisma.entity.findUnique({
+            where: { id },
+            include: {
+                // relations nécessaires
+            },
+        });
+    }
+
+    async findAll(
+        filters: any = {},
+        skip: number = 0,
+        take: number = 10
+    ): Promise<{
+        data: Entity[];
+        pagination: PaginationMeta;
+    }> {
+        const { search, ...otherFilters } = filters;
+
+        const where: Prisma.EntityWhereInput = {
+            deletedAt: null,
+        };
+
+        // Recherche textuelle
+        if (search) {
+            where.OR = [
+                { field1: { contains: search } },
+                { field2: { contains: search } },
+            ];
+        }
+
+        // Relations à inclure
+        const include: Prisma.EntityInclude = {
+            relationField: true,
+        };
+
+        // Filtres dynamiques avec FilterService
+        const baseQuery = FilterService.buildQuery(otherFilters);
+        Object.assign(where, baseQuery);
+
+        // Tri
+        let orderBy: Prisma.EntityOrderByWithRelationInput = { createdAt: 'desc' };
+        if (filters.sort) {
+            const [field, order] = filters.sort.split(':');
+            const trimmedField = field.trim();
+            const trimmedOrder = (order || 'asc').trim();
+            orderBy = { [trimmedField]: trimmedOrder };
+        }
+
+        // Exécution des requêtes en parallèle
+        const [data, total] = await Promise.all([
+            prisma.entity.findMany({
+                where,
+                skip,
+                take,
+                orderBy,
+                include,
+            }),
+            prisma.entity.count({ where }),
+        ]);
+
+        // Métadonnées de pagination
+        const currentPage = Math.floor(skip / take) + 1;
+        const totalPages = Math.ceil(total / take);
+
+        return {
+            data,
+            pagination: {
+                currentPage,
+                totalPages,
+                totalItems: total,
+                nextPage: currentPage < totalPages ? currentPage + 1 : 0,
+                previousPage: currentPage > 1 ? currentPage - 1 : 0,
+                perPage: take,
+            },
+        };
+    }
+
+     /**
+     * Delete some objects using a transaction
+     * @param tx - The transaction
+     * @returns The deleted posts
+     */
+    async handleDeleteUserPost(tx: Transaction): Promise<any> {
+        return tx.entity.deleteMany({
+            where: { authorId: userId },
+        });
+    }
+}
+
+export const entityRepository = new EntityRepository();
+```
+
+## Conventions Obligatoires
+
+### Structure de classe
+- **Toujours** utiliser une classe avec méthodes publiques async
+- Export d'une instance unique en bas du fichier
+- Logger avec classe spécifique dans le constructeur
+
+### Méthodes CRUD Standard
+- `create(data)` - Créer une entité
+- `update(id, data)` - Mettre à jour une entité
+- `delete(id)` - Supprimer une entité (soft delete si `deletedAt`)
+- `findById(id)` - Trouver par ID avec relations
+- `findAll(filters, skip, take)` - Lister avec pagination
+
+### Pagination et Filtres
+- **Toujours** retourner `{ data, pagination }` pour `findAll`
+- Utiliser `FilterService.buildQuery()` pour les filtres dynamiques
+- Support de la recherche textuelle avec `search` parameter
+- Tri dynamique avec `sort:order` format
+
+### Soft Delete
+- **Toujours** exclure les entités supprimées : `deletedAt: null`
+- Utiliser `deletedAt` field pour soft delete
+
+### Relations Prisma
+- Définir explicitement les `include` pour optimiser les requêtes
+- Éviter les N+1 queries en incluant les relations nécessaires
+
+### Gestion des erreurs
+- Laisser Prisma lever les erreurs (gérées au niveau controller)
+- Logger les opérations importantes avec le logger de classe
+
+### Nommage
+- Fichiers : `userRepository.ts`, `postRepository.ts`
+- Classes : `UserRepository`, `PostRepository`  
+- Instances : `userRepository`, `postRepository`
+- Méthodes : camelCase standard
+
+### Performance
+- Exécuter `findMany` et `count` en parallèle avec `Promise.all`
+- Utiliser `skip` et `take` pour la pagination
+- Indexer les champs utilisés dans les `where` clauses
+

@@ -1,0 +1,68 @@
+auth {
+  mode: bearer
+}
+
+auth:bearer {
+  token: {{jwtToken}}
+}
+
+vars:pre-request {
+  baseUrl: http://localhost:3000/api
+}
+
+script:pre-request {
+  function isTokenValid(token) {
+    if (!token) return false;
+    
+    try {
+      const payload = JSON.parse(atob(token.split('.')[1]));
+      const currentTime = Math.floor(Date.now() / 1000);
+      
+      return payload.exp && payload.exp > (currentTime + 30);
+    } catch (error) {
+      console.log("Erreur lors de la vérification du token:", error);
+      return false;
+    }
+  }
+  
+  async function refreshToken() {
+    console.log("🔄 Renouvellement du token en cours...");
+    
+    try {
+      const loginResponse = await fetch(`${bru.getVar("baseUrl")}/auth/login`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          email: "oliwer721@gmail.com",
+          password: "motdepasse"
+        })
+      });
+      
+      if (loginResponse.ok) {
+        const data = await loginResponse.json();
+        if (data.data && data.data.accessToken) {
+          bru.setVar("jwtToken", data.data.accessToken);
+          console.log("✅ Nouveau token récupéré et stocké");
+          return true;
+        }
+      }
+      
+      console.log("❌ Échec du renouvellement du token");
+      return false;
+    } catch (error) {
+      console.log("❌ Erreur lors du renouvellement:", error);
+      return false;
+    }
+  }
+  
+  const currentToken = bru.getVar("jwtToken");
+  
+  if (!isTokenValid(currentToken)) {
+    console.log("🔍 Token invalide ou expiré, renouvellement nécessaire");
+    await refreshToken();
+  } else {
+    console.log("✅ Token valide, continuation de la requête");
+  }
+}

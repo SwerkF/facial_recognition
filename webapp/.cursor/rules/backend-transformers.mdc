@@ -1,0 +1,146 @@
+---
+description: Rules for creating customs transformers for the backend.
+globs: 
+alwaysApply: false
+---
+# Règles pour les Transformers Backend
+
+## Structure et Organisation
+
+Les transformers convertissent les entités Prisma en DTOs et doivent suivre cette structure :
+
+```typescript
+import { EntityWithRelations } from '@/types';
+import { EntityDto } from '@shared/dto';
+import { relatedTransformer } from './relatedTransformer';
+
+class EntityTransformer {
+    public toEntityDto(entity: EntityWithRelations): EntityDto {
+        return {
+            id: entity.id,
+            name: entity.name,
+            email: entity.email,
+            createdAt: entity.createdAt.toISOString(),
+            updatedAt: entity.updatedAt.toISOString(),
+            // Transformer les champs spéciaux
+            customField: entity.customField?.toISOString(),
+            // Transformer les relations
+            relatedItems: entity.relatedItems?.map((item) => relatedTransformer.toDto(item)),
+        };
+    }
+
+    // Méthodes de transformation supplémentaires si nécessaires
+    public toPublicDto(entity: EntityWithRelations): PublicEntityDto {
+        return {
+            id: entity.id,
+            name: entity.name,
+            // Exclure les champs sensibles
+        };
+    }
+
+    public toListDto(entity: Entity): EntityListDto {
+        return {
+            id: entity.id,
+            name: entity.name,
+            createdAt: entity.createdAt.toISOString(),
+            // Version allégée pour les listes
+        };
+    }
+}
+
+export const entityTransformer = new EntityTransformer();
+```
+
+## Conventions Obligatoires
+
+### Structure de classe
+- **Toujours** utiliser une classe avec méthodes publiques
+- Export d'une instance unique en bas du fichier
+- Pas de constructeur nécessaire (classe stateless)
+
+### Méthodes de transformation
+- **Méthode principale** : `toEntityDto()` - Transformation complète
+- **Méthodes optionnelles** :
+  - `toPublicDto()` - Version publique (sans données sensibles)
+  - `toListDto()` - Version allégée pour les listes
+  - `toSummaryDto()` - Version résumée
+
+### Transformation des dates
+- **TOUJOURS** convertir les `Date` en `string` avec `.toISOString()`
+- Format standard ISO 8601 pour toutes les dates
+- Gérer les dates optionnelles : `date?.toISOString()`
+
+### Transformation des relations
+- **Utiliser les autres transformers** pour les relations
+- Gérer les relations optionnelles avec `?.map()`
+- Ne pas créer de références circulaires
+
+### Types d'entrée
+- Utiliser les types `EntityWithRelations` du dossier `@/types`
+- Ces types incluent les relations Prisma nécessaires
+- Ne jamais accepter `any` en paramètre
+
+### Gestion des champs optionnels
+```typescript
+// Correct
+customField: entity.customField?.toISOString(),
+roles: entity.roles as UserRole, // Cast si nécessaire
+relations: entity.relations?.map(r => transformer.toDto(r)),
+
+// Incorrect
+customField: entity.customField.toISOString(), // Peut planter
+```
+
+### Nommage
+- Fichiers : `userTransformer.ts`, `postTransformer.ts`
+- Classes : `UserTransformer`, `PostTransformer`
+- Instances : `userTransformer`, `postTransformer`
+- Méthodes : `toUserDto`, `toPostDto`, etc.
+
+### Performance
+- Éviter les transformations coûteuses
+- Ne pas faire d'appels async dans les transformers
+- Utiliser le spread operator pour copier les champs simples
+
+### Sécurité
+- **Ne jamais exposer** les mots de passe, tokens, ou autres données sensibles
+- Utiliser `toPublicDto()` pour les APIs publiques
+- Filtrer les champs selon les permissions utilisateur
+
+## Exemple Complet
+
+```typescript
+import { UserWithRelations } from '@/types';
+import { UserDto, UserRole } from '@shared/dto';
+import { postTransformer } from './postTransformer';
+
+class UserTransformer {
+    public toUserDto(user: UserWithRelations): UserDto {
+        return {
+            id: user.id,
+            firstName: user.firstName,
+            lastName: user.lastName,
+            email: user.email,
+            createdAt: user.createdAt.toISOString(),
+            updatedAt: user.updatedAt.toISOString(),
+            phone: user.phone,
+            civility: user.civility,
+            birthDate: user.birthDate,
+            roles: user.roles as UserRole,
+            posts: user.posts?.map((post) => postTransformer.toPostDto(post)),
+        };
+    }
+
+    public toPublicUserDto(user: UserWithRelations): PublicUserDto {
+        return {
+            id: user.id,
+            firstName: user.firstName,
+            lastName: user.lastName,
+            // Pas d'email, phone, etc. dans la version publique
+        };
+    }
+}
+
+export const userTransformer = new UserTransformer();
+```
+
