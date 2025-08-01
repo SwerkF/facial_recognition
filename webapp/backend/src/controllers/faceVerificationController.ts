@@ -61,7 +61,7 @@ class FaceVerificationController {
                 //Add AI model service
                 const result = await aiModelService.recognizeFace(uploadedImageData, uploadedFileName);
                 console.log('result:', result);
-                
+
                 // Création de la vérification faciale
                 const faceVerification = await faceVerificationRepository.create({
                     uploadedImage: {
@@ -70,7 +70,7 @@ class FaceVerificationController {
                         },
                     },
                     imageType: 'uploaded',
-                    result: result.is_oliwer ? 'success' : 'failure',
+                    result: result.is_same ? 'success' : 'failure',
                     duration: Date.now() - startTime,
                     confidence: result.confidence,
                 });
