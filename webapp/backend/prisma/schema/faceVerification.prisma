@@ -11,14 +11,13 @@ enum VerificationResult {
 
 model FaceVerification {
   id                 Int                @id @default(autoincrement())
-  referenceImageId   String             @unique @db.VarChar(255) @map("reference_image_id")
   uploadedImageId    String             @unique @db.VarChar(255) @map("uploaded_image_id")
   imageType          ImageType          @map("image_type")
   result             VerificationResult
   timestamp          DateTime           @default(now())
   duration           Float              @map("duration")
-
-  referenceImage Media? @relation("referenceImage", fields: [referenceImageId], references: [id])
+  confidence         Float              @map("confidence")
+  
   uploadedImage  Media? @relation("uploadedImage", fields: [uploadedImageId], references: [id])
   
   @@map("face_verifications")

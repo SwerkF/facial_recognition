@@ -5,22 +5,17 @@ import { minioService } from "@/services/minioService";
 
 class FaceVerificationTransformer {
     public async toFaceVerificationDto(faceVerification: FaceVerificationWithRelations): Promise<FaceVerificationDto> {
-        // Générer les URLs pré-signées pour les images
-        const referenceImageUrl = faceVerification.referenceImage?.url 
-            ? await minioService.getFile(faceVerification.referenceImage.url)
-            : '';
-            
         const uploadedImageUrl = faceVerification.uploadedImage?.url 
             ? await minioService.getFile(faceVerification.uploadedImage.url)
             : '';
 
         return {
-            referenceImageUrl,
             imageType: faceVerification.imageType as ImageType,
             duration: faceVerification.duration / 1000,
             uploadedImageUrl,
             result: faceVerification.result as VerificationResult,
             createdAt: faceVerification.timestamp.toISOString(),
+            confidence: faceVerification.confidence,
         };
     }
 

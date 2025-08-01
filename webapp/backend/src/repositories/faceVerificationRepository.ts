@@ -7,7 +7,6 @@ import { FaceVerificationWithRelations } from '@/types';
 const prisma = new PrismaClient();
 
 export const faceVerificationInclude = {
-    referenceImage: true,
     uploadedImage: true,
 };
 

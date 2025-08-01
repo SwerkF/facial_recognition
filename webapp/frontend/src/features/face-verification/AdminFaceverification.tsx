@@ -299,26 +299,16 @@ const AdminFaceVerification: React.FC = () => {// États
                     </div>
                   </div>
 
-                  {/* Images */}
-                  <div className="grid grid-cols-2 gap-2 mb-4">
-                    <div className="relative">
-                      <img
-                        src={verification.referenceImageUrl}
-                        alt="Image de référence"
-                        className="w-full h-24 object-cover rounded-xl border border-gray-600/30"
-                      />
-                      <div className="absolute bottom-1 left-1 bg-black/70 text-white text-xs px-1 py-0.5 rounded">
-                        Référence
-                      </div>
-                    </div>
+                  {/* Image */}
+                  <div className="mb-4">
                     <div className="relative">
                       <img
                         src={verification.uploadedImageUrl}
-                        alt="Image capturée"
-                        className="w-full h-24 object-cover rounded-xl border border-gray-600/30"
+                        alt="Image téléchargée"
+                        className="w-full h-32 object-cover rounded-xl border border-gray-600/30"
                       />
                       <div className="absolute bottom-1 left-1 bg-black/70 text-white text-xs px-1 py-0.5 rounded">
-                        Capturée
+                        {verification.imageType === ImageType.captured ? 'Capturée' : 'Téléchargée'}
                       </div>
                     </div>
                   </div>
@@ -390,26 +380,16 @@ const AdminFaceVerification: React.FC = () => {// États
                    </Button>
                 </div>
 
-                {/* Images en grand */}
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-8 mb-8">
-                  <div className="text-center">
-                    <h4 className="text-lg font-semibold text-white mb-4">Image de référence</h4>
-                    <div className="relative rounded-2xl overflow-hidden border border-gray-600/50">
-                      <img
-                        src={selectedVerification.referenceImageUrl}
-                        alt="Image de référence"
-                        className="w-full h-80 object-cover"
-                      />
-                    </div>
-                  </div>
-                  <div className="text-center">
+                {/* Image en grand */}
+                <div className="flex justify-center mb-8">
+                  <div className="text-center max-w-md">
                     <h4 className="text-lg font-semibold text-white mb-4">
                       Image {selectedVerification.imageType === ImageType.captured ? 'capturée' : 'téléchargée'}
                     </h4>
                     <div className="relative rounded-2xl overflow-hidden border border-gray-600/50">
                       <img
                         src={selectedVerification.uploadedImageUrl}
-                        alt="Image capturée"
+                        alt="Image téléchargée"
                         className="w-full h-80 object-cover"
                       />
                     </div>

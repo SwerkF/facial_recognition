@@ -9,6 +9,7 @@ import { minioService } from '@/services/minioService';
 import { mediaRepository } from '@/repositories/mediaRepository';
 import { faceVerificationTransformer } from '@/transformers/faceVerificationTransformer';
 import { FastifyRequest, FastifyReply } from 'fastify';
+import { aiModelService } from '@/services/aiModelService';
 
 class FaceVerificationController {
 
@@ -21,12 +22,11 @@ class FaceVerificationController {
             try {
                 const startTime = Date.now();
 
-                // Récupération des deux fichiers depuis la requête multipart
-                const referenceImageData = (req as any).body?.referenceImage;
+                // Récupération de l'image depuis la requête multipart
                 const uploadedImageData = (req as any).body?.uploadedImage;
 
-                if (!referenceImageData || !uploadedImageData) {
-                    return badRequestResponse(res, 'Les deux fichiers sont requis: referenceImage et uploadedImage');
+                if (!uploadedImageData) {
+                    return badRequestResponse(res, 'L\'image à analyser est requise');
                 }
 
                 // Types MIME autorisés pour les images
@@ -40,50 +40,39 @@ class FaceVerificationController {
                     'image/tiff'
                 ];
 
-                if (!allowedMimeTypes.includes(referenceImageData.mimetype) ||
-                    !allowedMimeTypes.includes(uploadedImageData.mimetype)) {
+                if (!allowedMimeTypes.includes(uploadedImageData.mimetype)) {
                     return badRequestResponse(res, 'Type de fichier non supporté. Formats acceptés: JPEG, PNG, WEBP, GIF, BMP, TIFF');
                 }
 
-                // Upload des deux fichiers vers MinIO
-                const [uploadedReferenceFileName, uploadedUploadedFileName] = await Promise.all([
-                    minioService.uploadFile(referenceImageData),
-                    minioService.uploadFile(uploadedImageData)
-                ]);
+                // Upload de l'image vers MinIO
+                const uploadedFileName = await minioService.uploadFile(uploadedImageData);
 
                 // Création des deux médias avec seulement le nom de fichier (pas l'URL complète)
-                const [referenceMedia, uploadedMedia] = await Promise.all([
+                const [uploadedMedia] = await Promise.all([
                     mediaRepository.create({
-                        url: uploadedReferenceFileName, // Stocker seulement le nom du fichier
-                        filename: uploadedReferenceFileName,
-                        mimeType: referenceImageData.mimetype,
-                        size: referenceImageData._buf?.length || 0,
-                        createdAt: new Date(),
-                    }),
-                    mediaRepository.create({
-                        url: uploadedUploadedFileName, // Stocker seulement le nom du fichier
-                        filename: uploadedUploadedFileName,
+                        url: uploadedFileName, // Stocker seulement le nom du fichier
+                        filename: uploadedFileName,
                         mimeType: uploadedImageData.mimetype,
                         size: uploadedImageData._buf?.length || 0,
-                        createdAt: new Date(),
+                        createdAt:  new Date(),
                     })
                 ]);
 
+                //Add AI model service
+                const result = await aiModelService.recognizeFace(uploadedImageData, uploadedFileName);
+                console.log('result:', result);
+                
                 // Création de la vérification faciale
                 const faceVerification = await faceVerificationRepository.create({
-                    referenceImage: {
-                        connect: {
-                            id: referenceMedia.id,
-                        },
-                    },
                     uploadedImage: {
                         connect: {
                             id: uploadedMedia.id,
                         },
                     },
                     imageType: 'uploaded',
-                    result: 'pending', // Par défaut en pending, sera mis à jour après traitement
+                    result: result.is_oliwer ? 'success' : 'failure',
                     duration: Date.now() - startTime,
+                    confidence: result.confidence,
                 });
 
                 // Récupération avec les relations pour le transformer

@@ -4,13 +4,12 @@ import { z } from 'zod';
 import { querySchema } from './commonDto';
 
 export const faceVerificationSchema = z.object({
-    referenceImageUrl: z.string(),
     uploadedImageUrl: z.string(),
     imageType: z.nativeEnum(ImageType),
     result: z.nativeEnum(VerificationResult),
     duration: z.number(),
     createdAt: z.date(),
-
+    confidence: z.number(),
 });
 
 export type FaceVerificationSchema = z.infer<typeof faceVerificationSchema>;
