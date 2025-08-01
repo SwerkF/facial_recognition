@@ -10,5 +10,3 @@ models/
 
 # Autres fichiers volumineux
 logs/
-binary_dataset/
-processed/
