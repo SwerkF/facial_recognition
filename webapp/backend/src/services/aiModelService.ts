@@ -1,5 +1,5 @@
 interface FaceRecognitionResult {
-  is_oliwer: boolean;
+  is_same: boolean;
   confidence: number;
   percentage: string;
   message: string;
