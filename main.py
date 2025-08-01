@@ -30,7 +30,7 @@ class OliwerDetector:
     Classe pour la détection d'Oliwer en temps réel.
     """
     
-    def __init__(self, model_path: str = './oliwer_best.keras'):
+    def __init__(self, model_path: str = './oliwer.keras'):
         """
         Initialise le détecteur d'Oliwer.
         
@@ -303,7 +303,7 @@ def main():
     
     try:
         # Créer et démarrer le détecteur
-        detector = OliwerDetector('./model.keras')
+        detector = OliwerDetector('./oliwer.keras')
         detector.start_detection()
         
     except KeyboardInterrupt:
