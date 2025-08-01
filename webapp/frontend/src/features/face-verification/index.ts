@@ -1,0 +1,1 @@
+export { default as FaceVerification } from './FaceVerification'; 

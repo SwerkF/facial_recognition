@@ -1,0 +1,32 @@
+{
+    "compilerOptions": {
+      // Base Options recommended for all projects
+      "esModuleInterop": true,
+      "skipLibCheck": true,
+      "target": "es2022",
+      "allowJs": true,
+      "resolveJsonModule": true,
+      "moduleDetection": "force",
+      "isolatedModules": true,
+      // Enable strict type checking so you can catch bugs early
+      "strict": true,
+      "noUncheckedIndexedAccess": true,
+      "noImplicitOverride": true,
+      "noImplicitAny": true,
+      "noFallthroughCasesInSwitch": true,
+      "noImplicitReturns": true,
+      // Transpile our TypeScript code to JavaScript
+      "module": "CommonJS",
+      "moduleResolution": "node",
+      "outDir": "dist",
+      "lib": ["es2022"],
+      "types": ["node"],
+      // Alias paths
+      "baseUrl": ".",
+      "paths": {
+        "@shared/*": ["../shared/*"]
+      }
+    },
+    "include": ["**/*.ts",],
+    "exclude": ["node_modules"]
+  }

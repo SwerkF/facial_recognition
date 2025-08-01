@@ -1,0 +1,588 @@
+---
+description: Rules for creating customs features for the frontend.
+globs: 
+alwaysApply: false
+---
+# Règles Frontend Features - Organisation par Domaine
+
+## Structure des Features
+
+### Organisation par Domaine
+```
+frontend/src/features/
+├── auth/                # Authentification
+│   ├── Login.tsx        # Page de connexion
+│   ├── Register.tsx     # Page d'inscription
+│   ├── hooks/           # Hooks spécifiques à l'auth
+│   ├── components/      # Composants spécifiques à l'auth
+│   └── index.ts         # Exports de la feature
+├── users/               # Gestion des utilisateurs
+│   ├── UsersList.tsx    # Liste des utilisateurs
+│   ├── UserProfile.tsx  # Profil utilisateur
+│   ├── components/      # Composants spécifiques aux users
+│   ├── hooks/           # Hooks spécifiques aux users
+│   └── index.ts
+├── posts/               # Gestion des articles
+├── Error.tsx            # Page d'erreur globale
+└── index.ts             # Exports de toutes les features
+```
+
+### Structure d'une Feature
+- **Pages principales** : Composants de page au niveau racine
+- **Composants** : Composants spécifiques à la feature
+- **Hooks** : Hooks métier spécifiques
+- **Types** : Types spécifiques si nécessaire
+- **Index** : Barrel exports
+
+## Pattern Feature Page
+
+### Page d'Authentification
+```typescript
+// features/auth/Login.tsx
+import React from 'react';
+import { useForm } from 'react-hook-form';
+import { Link, useNavigate } from 'react-router-dom';
+import { zodResolver } from '@hookform/resolvers/zod';
+import { motion } from 'framer-motion';
+import { toast } from 'react-toastify';
+
+import { useLogin } from '@/api/queries/authQueries';
+import { Button } from '@/components/ui/Button/Button';
+import { Card } from '@/components/ui/Card/Card';
+import { Input } from '@/components/ui/Input/Input';
+
+import { LoginDto, Login as LoginSchema } from '@shared/dto';
+
+export default function Login() {
+    const navigate = useNavigate();
+    
+    const {
+        register,
+        handleSubmit,
+        formState: { errors, isSubmitting },
+    } = useForm<LoginDto>({
+        resolver: zodResolver(LoginSchema),
+    });
+
+    const { mutate: loginUser, isPending } = useLogin({
+        onSuccess: () => {
+            toast.success('Connexion réussie !');
+            navigate('/dashboard');
+        },
+        onError: (error) => {
+            toast.error(error.message || 'Erreur de connexion');
+        },
+    });
+
+    const onSubmit = async (data: LoginDto) => {
+        loginUser(data);
+    };
+
+    return (
+        <div className="min-h-screen flex items-center justify-center bg-gray-50 py-12 px-4 sm:px-6 lg:px-8">
+            <div className="max-w-md w-full space-y-8">
+                <Card>
+                    <div className="text-center">
+                        <motion.div
+                            initial={{ scale: 0 }}
+                            animate={{ scale: 1 }}
+                            transition={{ delay: 0.2, type: 'spring', stiffness: 260, damping: 20 }}
+                            className="mx-auto flex h-16 w-16 items-center justify-center rounded-full bg-blue-600"
+                        >
+                            <span className="text-2xl font-bold text-white">Logo</span>
+                        </motion.div>
+                        <h2 className="mt-6 text-3xl font-extrabold text-gray-900">
+                            Connexion
+                        </h2>
+                        <p className="mt-2 text-sm text-gray-600">
+                            Connectez-vous à votre compte
+                        </p>
+                    </div>
+
+                    <form className="mt-8 space-y-6" onSubmit={handleSubmit(onSubmit)}>
+                        <div className="space-y-4">
+                            <Input
+                                label="Email"
+                                type="email"
+                                autoComplete="email"
+                                {...register('email')}
+                                error={errors.email?.message}
+                                placeholder="votre@email.com"
+                            />
+                            <Input
+                                label="Mot de passe"
+                                type="password"
+                                autoComplete="current-password"
+                                {...register('password')}
+                                error={errors.password?.message}
+                                placeholder="••••••••"
+                            />
+                        </div>
+
+                        <Button
+                            type="submit"
+                            className="w-full"
+                            isLoading={isSubmitting || isPending}
+                            disabled={isSubmitting || isPending}
+                            loadingText="Connexion en cours..."
+                        >
+                            Se connecter
+                        </Button>
+
+                        <div className="flex items-center justify-between text-sm">
+                            <Link
+                                to="/auth/forgot-password"
+                                className="text-blue-600 hover:text-blue-500 transition-colors"
+                            >
+                                Mot de passe oublié ?
+                            </Link>
+                            <Link
+                                to="/auth/register"
+                                className="text-blue-600 hover:text-blue-500 transition-colors"
+                            >
+                                S'inscrire
+                            </Link>
+                        </div>
+                    </form>
+                </Card>
+            </div>
+        </div>
+    );
+}
+```
+
+### Page de Liste avec Recherche
+```typescript
+// features/users/UsersList.tsx
+import React, { useState } from 'react';
+import { Link } from 'react-router-dom';
+import { motion } from 'framer-motion';
+import { Search, Plus, Edit, Trash2 } from 'lucide-react';
+
+import { useGetAllUsers, useDeleteUser } from '@/api/queries/userQueries';
+import { Button } from '@/components/ui/Button/Button';
+import { Input } from '@/components/ui/Input/Input';
+import { Table } from '@/components/ui/Table/Table';
+import { Pagination } from '@/components/ui/Pagination/Pagination';
+import { Loader } from '@/components/ui/Loader/Loader';
+
+import { GetAllUsers } from '@shared/dto';
+
+export default function UsersList() {
+    const [searchParams, setSearchParams] = useState<GetAllUsers>({
+        page: 1,
+        limit: 10,
+        search: '',
+    });
+
+    const { data: users, isLoading, error } = useGetAllUsers(searchParams);
+    const { mutate: deleteUser } = useDeleteUser();
+
+    const handleSearch = (search: string) => {
+        setSearchParams(prev => ({ ...prev, search, page: 1 }));
+    };
+
+    const handlePageChange = (page: number) => {
+        setSearchParams(prev => ({ ...prev, page }));
+    };
+
+    const handleDelete = (userId: string) => {
+        if (window.confirm('Êtes-vous sûr de vouloir supprimer cet utilisateur ?')) {
+            deleteUser(userId);
+        }
+    };
+
+    if (isLoading) return <Loader />;
+    if (error) return <div>Erreur: {error.message}</div>;
+
+    return (
+        <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            className="space-y-6"
+        >
+            {/* Header */}
+            <div className="flex justify-between items-center">
+                <div>
+                    <h1 className="text-2xl font-bold text-gray-900">Utilisateurs</h1>
+                    <p className="text-gray-600">Gestion des utilisateurs de l'application</p>
+                </div>
+                <Button asChild>
+                    <Link to="/users/new">
+                        <Plus className="w-4 h-4 mr-2" />
+                        Nouvel utilisateur
+                    </Link>
+                </Button>
+            </div>
+
+            {/* Recherche */}
+            <div className="flex items-center space-x-4">
+                <div className="flex-1">
+                    <Input
+                        placeholder="Rechercher des utilisateurs..."
+                        value={searchParams.search}
+                        onChange={(e) => handleSearch(e.target.value)}
+                        startIcon={<Search className="w-4 h-4 text-gray-400" />}
+                    />
+                </div>
+            </div>
+
+            {/* Tableau */}
+            <div className="bg-white shadow rounded-lg overflow-hidden">
+                <Table>
+                    <Table.Header>
+                        <Table.Row>
+                            <Table.Head>Nom</Table.Head>
+                            <Table.Head>Email</Table.Head>
+                            <Table.Head>Rôle</Table.Head>
+                            <Table.Head>Date de création</Table.Head>
+                            <Table.Head className="text-right">Actions</Table.Head>
+                        </Table.Row>
+                    </Table.Header>
+                    <Table.Body>
+                        {users?.data.map((user) => (
+                            <Table.Row key={user.id}>
+                                <Table.Cell className="font-medium">
+                                    {user.name}
+                                </Table.Cell>
+                                <Table.Cell>{user.email}</Table.Cell>
+                                <Table.Cell>
+                                    <span className={`px-2 py-1 text-xs rounded-full ${
+                                        user.role === 'ADMIN' 
+                                            ? 'bg-purple-100 text-purple-800'
+                                            : 'bg-gray-100 text-gray-800'
+                                    }`}>
+                                        {user.role}
+                                    </span>
+                                </Table.Cell>
+                                <Table.Cell>
+                                    {new Date(user.createdAt).toLocaleDateString()}
+                                </Table.Cell>
+                                <Table.Cell className="text-right">
+                                    <div className="flex justify-end space-x-2">
+                                        <Button
+                                            variant="ghost"
+                                            size="sm"
+                                            asChild
+                                        >
+                                            <Link to={`/users/${user.id}/edit`}>
+                                                <Edit className="w-4 h-4" />
+                                            </Link>
+                                        </Button>
+                                        <Button
+                                            variant="ghost"
+                                            size="sm"
+                                            onClick={() => handleDelete(user.id)}
+                                        >
+                                            <Trash2 className="w-4 h-4 text-red-500" />
+                                        </Button>
+                                    </div>
+                                </Table.Cell>
+                            </Table.Row>
+                        ))}
+                    </Table.Body>
+                </Table>
+
+                {/* Pagination */}
+                {users?.pagination && (
+                    <div className="px-6 py-4 border-t">
+                        <Pagination
+                            currentPage={users.pagination.page}
+                            totalPages={users.pagination.totalPages}
+                            onPageChange={handlePageChange}
+                        />
+                    </div>
+                )}
+            </div>
+        </motion.div>
+    );
+}
+```
+
+## Hooks Métier Spécifiques
+
+### Hook d'Authentification
+```typescript
+// features/auth/hooks/useAuth.ts
+import { useEffect } from 'react';
+import { useNavigate, useLocation } from 'react-router-dom';
+import { useAuthStore } from '@/stores/authStore';
+
+export const useAuth = (requireAuth: boolean = true) => {
+    const navigate = useNavigate();
+    const location = useLocation();
+    const { isAuthenticated, user, initialize } = useAuthStore();
+
+    useEffect(() => {
+        initialize();
+    }, [initialize]);
+
+    useEffect(() => {
+        if (requireAuth && !isAuthenticated) {
+            navigate('/auth/login', { 
+                state: { from: location.pathname },
+                replace: true 
+            });
+        } else if (!requireAuth && isAuthenticated) {
+            navigate('/dashboard', { replace: true });
+        }
+    }, [isAuthenticated, requireAuth, navigate, location.pathname]);
+
+    return {
+        isAuthenticated,
+        user,
+        isLoading: user === null && isAuthenticated === false,
+    };
+};
+```
+
+### Hook de Formulaire Générique
+```typescript
+// features/common/hooks/useFormWithValidation.ts
+import { useForm, UseFormProps } from 'react-hook-form';
+import { zodResolver } from '@hookform/resolvers/zod';
+import { ZodSchema } from 'zod';
+import { toast } from 'react-toastify';
+
+interface UseFormWithValidationProps<T> extends Omit<UseFormProps<T>, 'resolver'> {
+    schema: ZodSchema<T>;
+    onSubmit: (data: T) => Promise<void> | void;
+    onSuccess?: (data: T) => void;
+    onError?: (error: Error) => void;
+    successMessage?: string;
+}
+
+export const useFormWithValidation = <T extends Record<string, any>>({
+    schema,
+    onSubmit,
+    onSuccess,
+    onError,
+    successMessage = 'Opération réussie',
+    ...formProps
+}: UseFormWithValidationProps<T>) => {
+    const form = useForm<T>({
+        resolver: zodResolver(schema),
+        ...formProps,
+    });
+
+    const handleSubmit = form.handleSubmit(async (data) => {
+        try {
+            await onSubmit(data);
+            onSuccess?.(data);
+            toast.success(successMessage);
+        } catch (error) {
+            const errorMessage = error instanceof Error ? error.message : 'Une erreur est survenue';
+            onError?.(error as Error);
+            toast.error(errorMessage);
+        }
+    });
+
+    return {
+        ...form,
+        handleSubmit,
+        isSubmitting: form.formState.isSubmitting,
+    };
+};
+```
+
+## Composants Spécifiques à la Feature
+
+### Composant UserCard
+```typescript
+// features/users/components/UserCard.tsx
+import React from 'react';
+import { Link } from 'react-router-dom';
+import { motion } from 'framer-motion';
+import { Mail, Calendar, Shield } from 'lucide-react';
+
+import { Card } from '@/components/ui/Card/Card';
+import { Button } from '@/components/ui/Button/Button';
+import { Badge } from '@/components/ui/Badge/Badge';
+
+import { UserDto } from '@shared/dto';
+
+interface UserCardProps {
+    user: UserDto;
+    onEdit?: (user: UserDto) => void;
+    onDelete?: (userId: string) => void;
+}
+
+export const UserCard: React.FC<UserCardProps> = ({ 
+    user, 
+    onEdit, 
+    onDelete 
+}) => {
+    return (
+        <motion.div
+            initial={{ opacity: 0, scale: 0.95 }}
+            animate={{ opacity: 1, scale: 1 }}
+            whileHover={{ y: -2 }}
+            transition={{ duration: 0.2 }}
+        >
+            <Card className="p-6">
+                <div className="flex items-start justify-between">
+                    <div className="flex-1">
+                        <h3 className="text-lg font-semibold text-gray-900">
+                            {user.name}
+                        </h3>
+                        
+                        <div className="mt-2 space-y-2">
+                            <div className="flex items-center text-sm text-gray-600">
+                                <Mail className="w-4 h-4 mr-2" />
+                                {user.email}
+                            </div>
+                            
+                            <div className="flex items-center text-sm text-gray-600">
+                                <Calendar className="w-4 h-4 mr-2" />
+                                Inscrit le {new Date(user.createdAt).toLocaleDateString()}
+                            </div>
+                        </div>
+                        
+                        <div className="mt-4">
+                            <Badge 
+                                variant={user.role === 'ADMIN' ? 'primary' : 'secondary'}
+                                className="inline-flex items-center"
+                            >
+                                <Shield className="w-3 h-3 mr-1" />
+                                {user.role}
+                            </Badge>
+                        </div>
+                    </div>
+                    
+                    <div className="flex flex-col space-y-2">
+                        <Button 
+                            size="sm" 
+                            variant="secondary"
+                            asChild
+                        >
+                            <Link to={`/users/${user.id}`}>
+                                Voir
+                            </Link>
+                        </Button>
+                        
+                        {onEdit && (
+                            <Button 
+                                size="sm" 
+                                variant="ghost"
+                                onClick={() => onEdit(user)}
+                            >
+                                Modifier
+                            </Button>
+                        )}
+                        
+                        {onDelete && (
+                            <Button 
+                                size="sm" 
+                                variant="danger"
+                                onClick={() => onDelete(user.id)}
+                            >
+                                Supprimer
+                            </Button>
+                        )}
+                    </div>
+                </div>
+            </Card>
+        </motion.div>
+    );
+};
+```
+
+## Page d'Erreur
+
+### Error Boundary et Page d'Erreur
+```typescript
+// features/Error.tsx
+import React from 'react';
+import { Link, useRouteError, isRouteErrorResponse } from 'react-router-dom';
+import { motion } from 'framer-motion';
+import { AlertTriangle, Home, RefreshCw } from 'lucide-react';
+
+import { Button } from '@/components/ui/Button/Button';
+
+export default function ErrorPage() {
+    const error = useRouteError();
+
+    let errorMessage = 'Une erreur inattendue est survenue';
+    let errorStatus = 500;
+
+    if (isRouteErrorResponse(error)) {
+        errorMessage = error.statusText || error.data?.message;
+        errorStatus = error.status;
+    } else if (error instanceof Error) {
+        errorMessage = error.message;
+    }
+
+    const handleReload = () => {
+        window.location.reload();
+    };
+
+    return (
+        <div className="min-h-screen flex items-center justify-center bg-gray-50 px-4">
+            <motion.div
+                initial={{ opacity: 0, y: 20 }}
+                animate={{ opacity: 1, y: 0 }}
+                className="text-center max-w-md w-full"
+            >
+                <motion.div
+                    initial={{ scale: 0 }}
+                    animate={{ scale: 1 }}
+                    transition={{ delay: 0.2, type: 'spring' }}
+                    className="mx-auto flex items-center justify-center w-16 h-16 bg-red-100 rounded-full mb-6"
+                >
+                    <AlertTriangle className="w-8 h-8 text-red-600" />
+                </motion.div>
+
+                <h1 className="text-6xl font-bold text-gray-900 mb-4">
+                    {errorStatus}
+                </h1>
+
+                <h2 className="text-xl font-semibold text-gray-700 mb-2">
+                    Oops! Quelque chose s'est mal passé
+                </h2>
+
+                <p className="text-gray-600 mb-8">
+                    {errorMessage}
+                </p>
+
+                <div className="space-y-4">
+                    <Button onClick={handleReload} className="w-full">
+                        <RefreshCw className="w-4 h-4 mr-2" />
+                        Réessayer
+                    </Button>
+
+                    <Button variant="secondary" asChild className="w-full">
+                        <Link to="/">
+                            <Home className="w-4 h-4 mr-2" />
+                            Retour à l'accueil
+                        </Link>
+                    </Button>
+                </div>
+            </motion.div>
+        </div>
+    );
+}
+```
+
+## Conventions Features
+
+### Organisation
+- **Une feature par domaine métier** (auth, users, posts)
+- **Pages au niveau racine** de la feature
+- **Composants spécifiques** dans un sous-dossier
+- **Hooks métier** dans un sous-dossier hooks
+- **Barrel exports** pour exposer l'API de la feature
+
+### Patterns
+- **React Hook Form + Zod** pour tous les formulaires
+- **TanStack Query** pour les appels API
+- **Framer Motion** pour les animations
+- **React Router** pour la navigation
+- **Toast notifications** pour les feedbacks
+
+### UX/UI
+- **Loading states** pour toutes les actions async
+- **Error boundaries** pour gérer les erreurs
+- **Animations cohérentes** avec Framer Motion
+- **Responsive design** pour tous les écrans
+
+- **Accessibilité** avec ARIA et navigation clavier

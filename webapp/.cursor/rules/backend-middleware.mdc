@@ -1,0 +1,452 @@
+---
+description: Rules for creating customs middlewares for the backend.
+globs: 
+alwaysApply: false
+---
+# Règles Backend Middleware - Fastify
+
+## Structure des Middlewares
+
+### Organisation
+```
+backend/src/middleware/
+├── auth.ts             # Authentification et autorisation
+├── rateLimiter.ts      # Limitation du taux de requêtes
+├── logger.ts           # Logging des requêtes
+├── errorHandler.ts     # Gestion globale des erreurs
+├── cors.ts             # Configuration CORS
+├── validation.ts       # Validation des données
+└── index.ts            # Exports groupés
+```
+
+## Middleware d'Authentification
+
+### Auth Middleware
+```typescript
+import { FastifyRequest, FastifyReply } from 'fastify';
+import jwt from 'jsonwebtoken';
+import { userRepository } from '@/repositories';
+import { unauthorizedResponse, forbiddenResponse } from '@/utils/jsonResponse';
+import { logger } from '@/utils/logger';
+
+interface JWTPayload {
+    userId: string;
+    email: string;
+    role: string;
+}
+
+declare module 'fastify' {
+    interface FastifyRequest {
+        user?: {
+            id: string;
+            email: string;
+            role: string;
+        };
+    }
+}
+
+export const isAuthenticated = async (
+    request: FastifyRequest,
+    reply: FastifyReply
+) => {
+    try {
+        const authHeader = request.headers.authorization;
+        
+        if (!authHeader || !authHeader.startsWith('Bearer ')) {
+            return unauthorizedResponse(reply, 'Token manquant ou invalide');
+        }
+        
+        const token = authHeader.substring(7);
+        const decoded = jwt.verify(token, process.env.JWT_SECRET!) as JWTPayload;
+        
+        // Vérifier que l'utilisateur existe toujours
+        const user = await userRepository.findById(decoded.userId);
+        if (!user) {
+            return unauthorizedResponse(reply, 'Utilisateur non trouvé');
+        }
+        
+        // Ajouter l'utilisateur à la requête
+        request.user = {
+            id: user.id,
+            email: user.email,
+            role: user.role,
+        };
+        
+    } catch (error) {
+        logger.error('Authentication error:', error);
+        return unauthorizedResponse(reply, 'Token invalide');
+    }
+};
+
+export const verifyAccess = (allowedRoles: string[]) => {
+    return async (request: FastifyRequest, reply: FastifyReply) => {
+        if (!request.user) {
+            return unauthorizedResponse(reply, 'Authentification requise');
+        }
+        
+        if (!allowedRoles.includes(request.user.role)) {
+            return forbiddenResponse(reply, 'Accès refusé');
+        }
+    };
+};
+
+// Middleware optionnel (n'échoue pas si pas de token)
+export const optionalAuth = async (
+    request: FastifyRequest,
+    reply: FastifyReply
+) => {
+    try {
+        const authHeader = request.headers.authorization;
+        
+        if (authHeader && authHeader.startsWith('Bearer ')) {
+            const token = authHeader.substring(7);
+            const decoded = jwt.verify(token, process.env.JWT_SECRET!) as JWTPayload;
+            
+            const user = await userRepository.findById(decoded.userId);
+            if (user) {
+                request.user = {
+                    id: user.id,
+                    email: user.email,
+                    role: user.role,
+                };
+            }
+        }
+    } catch (error) {
+        // Ignore les erreurs pour l'auth optionnelle
+        logger.debug('Optional auth failed:', error);
+    }
+};
+```
+
+## Rate Limiter Middleware
+
+### Configuration Rate Limiter
+```typescript
+import { FastifyInstance } from 'fastify';
+import rateLimit from '@fastify/rate-limit';
+import { logger } from '@/utils/logger';
+
+export const configureRateLimiter = (app: FastifyInstance) => {
+    // Rate limiter global
+    app.register(rateLimit, {
+        max: 100,
+        timeWindow: '1 minute',
+        keyGenerator: (request) => {
+            return request.user?.id || request.ip;
+        },
+        errorResponseBuilder: (request, context) => {
+            logger.warn(`Rate limit exceeded for ${request.ip}`, {
+                ip: request.ip,
+                url: request.url,
+                method: request.method,
+            });
+            
+            return {
+                success: false,
+                message: 'Trop de requêtes, veuillez réessayer plus tard',
+                statusCode: 429,
+                retryAfter: Math.round(context.ttl / 1000),
+            };
+        },
+    });
+};
+
+// Rate limiter spécifique pour l'authentification
+export const authRateLimit = {
+    max: 5,
+    timeWindow: '5 minutes',
+    keyGenerator: (request: FastifyRequest) => request.ip,
+    errorResponseBuilder: (request: FastifyRequest, context: any) => {
+        return {
+            success: false,
+            message: 'Trop de tentatives de connexion, veuillez réessayer plus tard',
+            statusCode: 429,
+            retryAfter: Math.round(context.ttl / 1000),
+        };
+    },
+};
+
+// Rate limiter pour les uploads
+export const uploadRateLimit = {
+    max: 10,
+    timeWindow: '1 hour',
+    keyGenerator: (request: FastifyRequest) => {
+        return request.user?.id || request.ip;
+    },
+};
+```
+
+## Logger Middleware
+
+### HTTP Logger
+```typescript
+import { FastifyRequest, FastifyReply } from 'fastify';
+import { logger } from '@/utils/logger';
+
+export const httpLoggerMiddleware = async (
+    request: FastifyRequest,
+    reply: FastifyReply
+) => {
+    const start = Date.now();
+    
+    // Log de la requête entrante
+    logger.info({
+        method: request.method,
+        url: request.url,
+        ip: request.ip,
+        userAgent: request.headers['user-agent'],
+        userId: request.user?.id,
+    }, 'Incoming request');
+    
+    // Hook pour logger la réponse
+    reply.addHook('onSend', async (request, reply, payload) => {
+        const duration = Date.now() - start;
+        
+        logger.info({
+            method: request.method,
+            url: request.url,
+            statusCode: reply.statusCode,
+            duration,
+            ip: request.ip,
+            userId: request.user?.id,
+        }, 'Request completed');
+        
+        return payload;
+    });
+};
+
+// Logger pour les erreurs
+export const errorLoggerMiddleware = (
+    error: Error,
+    request: FastifyRequest,
+    reply: FastifyReply
+) => {
+    logger.error({
+        error: {
+            message: error.message,
+            stack: error.stack,
+            name: error.name,
+        },
+        request: {
+            method: request.method,
+            url: request.url,
+            ip: request.ip,
+            userAgent: request.headers['user-agent'],
+            userId: request.user?.id,
+        },
+    }, 'Request error');
+};
+```
+
+## Error Handler Middleware
+
+### Gestionnaire d'Erreurs Global
+```typescript
+import { FastifyInstance, FastifyError } from 'fastify';
+import { ZodError } from 'zod';
+import { logger } from '@/utils/logger';
+
+export const errorHandlerMiddleware = (app: FastifyInstance) => {
+    app.setErrorHandler((error: FastifyError, request, reply) => {
+        // Log de l'erreur
+        logger.error({
+            error: {
+                message: error.message,
+                stack: error.stack,
+                code: error.code,
+                statusCode: error.statusCode,
+            },
+            request: {
+                method: request.method,
+                url: request.url,
+                ip: request.ip,
+                userId: request.user?.id,
+            },
+        }, 'Application error');
+        
+        // Erreurs de validation Zod
+        if (error instanceof ZodError) {
+            return reply.status(400).send({
+                success: false,
+                message: 'Erreur de validation',
+                statusCode: 400,
+                errors: error.errors.map(err => ({
+                    field: err.path.join('.'),
+                    message: err.message,
+                })),
+            });
+        }
+        
+        // Erreurs Fastify avec statusCode
+        if (error.statusCode) {
+            return reply.status(error.statusCode).send({
+                success: false,
+                message: error.message,
+                statusCode: error.statusCode,
+            });
+        }
+        
+        // Erreurs de base de données
+        if (error.code === 'P2002') { // Prisma unique constraint
+            return reply.status(409).send({
+                success: false,
+                message: 'Cette ressource existe déjà',
+                statusCode: 409,
+            });
+        }
+        
+        if (error.code === 'P2025') { // Prisma record not found
+            return reply.status(404).send({
+                success: false,
+                message: 'Ressource non trouvée',
+                statusCode: 404,
+            });
+        }
+        
+        // Erreur générique
+        return reply.status(500).send({
+            success: false,
+            message: process.env.NODE_ENV === 'production' 
+                ? 'Erreur interne du serveur' 
+                : error.message,
+            statusCode: 500,
+        });
+    });
+};
+```
+
+## CORS Middleware
+
+### Configuration CORS
+```typescript
+import { FastifyInstance } from 'fastify';
+import cors from '@fastify/cors';
+
+export const configureCors = (app: FastifyInstance) => {
+    app.register(cors, {
+        origin: (origin, callback) => {
+            const allowedOrigins = process.env.ALLOWED_ORIGINS?.split(',') || [
+                'http://localhost:3000',
+                'http://localhost:5173',
+            ];
+            
+            // Permettre les requêtes sans origin (mobile apps, etc.)
+            if (!origin) return callback(null, true);
+            
+            if (allowedOrigins.includes(origin)) {
+                return callback(null, true);
+            }
+            
+            return callback(new Error('Not allowed by CORS'), false);
+        },
+        credentials: true,
+        methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS', 'PATCH'],
+        allowedHeaders: [
+            'Origin',
+            'X-Requested-With',
+            'Content-Type',
+            'Accept',
+            'Authorization',
+        ],
+    });
+};
+```
+
+## Validation Middleware
+
+### Middleware de Validation
+```typescript
+import { FastifyRequest, FastifyReply } from 'fastify';
+import { ZodSchema } from 'zod';
+import { errorResponse } from '@/utils/jsonResponse';
+
+export const validateBody = (schema: ZodSchema) => {
+    return async (request: FastifyRequest, reply: FastifyReply) => {
+        try {
+            const result = schema.safeParse(request.body);
+            
+            if (!result.success) {
+                return errorResponse(
+                    reply,
+                    'Erreur de validation du body',
+                    400,
+                    result.error.errors
+                );
+            }
+            
+            request.body = result.data;
+        } catch (error) {
+            return errorResponse(reply, 'Erreur de validation', 400);
+        }
+    };
+};
+
+export const validateQuery = (schema: ZodSchema) => {
+    return async (request: FastifyRequest, reply: FastifyReply) => {
+        try {
+            const result = schema.safeParse(request.query);
+            
+            if (!result.success) {
+                return errorResponse(
+                    reply,
+                    'Erreur de validation des paramètres',
+                    400,
+                    result.error.errors
+                );
+            }
+            
+            request.query = result.data;
+        } catch (error) {
+            return errorResponse(reply, 'Erreur de validation', 400);
+        }
+    };
+};
+
+export const validateParams = (schema: ZodSchema) => {
+    return async (request: FastifyRequest, reply: FastifyReply) => {
+        try {
+            const result = schema.safeParse(request.params);
+            
+            if (!result.success) {
+                return errorResponse(
+                    reply,
+                    'Erreur de validation des paramètres d\'URL',
+                    400,
+                    result.error.errors
+                );
+            }
+            
+            request.params = result.data;
+        } catch (error) {
+            return errorResponse(reply, 'Erreur de validation', 400);
+        }
+    };
+};
+```
+
+## Conventions Middleware
+
+### Structure Standard
+- Un middleware par responsabilité
+- Types TypeScript stricts
+- Gestion d'erreurs appropriée
+- Logging des actions importantes
+- Configuration via variables d'environnement
+
+### Bonnes Pratiques
+- Middleware réutilisables et composables
+- Validation des données d'entrée
+- Messages d'erreur explicites
+- Performance optimisée
+- Tests unitaires pour chaque middleware
+
+### Ordre d'Exécution
+1. Logger middleware (premier)
+2. CORS middleware
+3. Rate limiter
+4. Authentication (si nécessaire)
+5. Authorization (si nécessaire)
+6. Validation
+7. Business logic
+8. Error handler (dernier)
+

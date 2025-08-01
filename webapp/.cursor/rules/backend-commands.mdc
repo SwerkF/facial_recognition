@@ -1,0 +1,507 @@
+---
+description: Rules for creating customs commands for the backend.
+globs: 
+alwaysApply: false
+---
+# Règles Backend Commands - Tâches et Commandes
+
+## Structure des Commands
+
+### Organisation
+```
+backend/src/commands/
+├── index.ts            # Point d'entrée et orchestration
+├── cronJobs.ts         # Définition des tâches cron
+├── seedDatabase.ts     # Commande de seeding
+├── cleanupFiles.ts     # Nettoyage des fichiers
+├── sendEmails.ts       # Envoi d'emails en batch
+├── generateReports.ts  # Génération de rapports
+└── utils/              # Utilitaires pour les commandes
+    ├── scheduler.ts    # Gestionnaire de planification
+    └── taskRunner.ts   # Exécuteur de tâches
+```
+
+## Point d'Entrée des Commands
+
+### Index Commands
+```typescript
+import { logger } from '@/utils/logger';
+import { startCronJobs } from './cronJobs';
+import { seedDatabase } from './seedDatabase';
+import { cleanupOldFiles } from './cleanupFiles';
+
+const commandLogger = logger.child({ module: '[Commands]' });
+
+export const startCronJobs = () => {
+    commandLogger.info('Starting cron jobs...');
+    
+    try {
+        startCronJobs();
+        commandLogger.info('Cron jobs started successfully');
+    } catch (error) {
+        commandLogger.error('Failed to start cron jobs:', error);
+    }
+};
+
+// Commandes disponibles via CLI
+export const availableCommands = {
+    'seed': seedDatabase,
+    'cleanup': cleanupOldFiles,
+    'help': () => {
+        console.log('Available commands:');
+        console.log('  seed     - Seed the database with initial data');
+        console.log('  cleanup  - Clean up old files and data');
+    },
+};
+
+// Exécution de commande CLI
+export const runCommand = async (commandName: string, args: string[] = []) => {
+    const command = availableCommands[commandName as keyof typeof availableCommands];
+    
+    if (!command) {
+        commandLogger.error(`Unknown command: ${commandName}`);
+        availableCommands.help();
+        return;
+    }
+    
+    try {
+        commandLogger.info(`Executing command: ${commandName}`);
+        await command(...args);
+        commandLogger.info(`Command completed: ${commandName}`);
+    } catch (error) {
+        commandLogger.error(`Command failed: ${commandName}`, error);
+        throw error;
+    }
+};
+
+export default startCronJobs;
+```
+
+## Tâches Cron
+
+### Configuration Cron Jobs
+```typescript
+import cron from 'node-cron';
+import { logger } from '@/utils/logger';
+import { cleanupOldFiles } from './cleanupFiles';
+import { sendScheduledEmails } from './sendEmails';
+import { generateDailyReports } from './generateReports';
+import { cacheService } from '@/services';
+
+const cronLogger = logger.child({ module: '[CronJobs]' });
+
+export const startCronJobs = () => {
+    // Nettoyage des fichiers temporaires - tous les jours à 2h
+    cron.schedule('0 2 * * *', async () => {
+        cronLogger.info('Starting daily cleanup job');
+        try {
+            await cleanupOldFiles();
+            cronLogger.info('Daily cleanup completed');
+        } catch (error) {
+            cronLogger.error('Daily cleanup failed:', error);
+        }
+    }, {
+        timezone: 'Europe/Paris'
+    });
+
+    // Envoi des emails programmés - toutes les 5 minutes
+    cron.schedule('*/5 * * * *', async () => {
+        cronLogger.debug('Checking for scheduled emails');
+        try {
+            await sendScheduledEmails();
+        } catch (error) {
+            cronLogger.error('Scheduled email job failed:', error);
+        }
+    });
+
+    // Génération des rapports quotidiens - tous les jours à 6h
+    cron.schedule('0 6 * * *', async () => {
+        cronLogger.info('Starting daily report generation');
+        try {
+            await generateDailyReports();
+            cronLogger.info('Daily reports generated');
+        } catch (error) {
+            cronLogger.error('Daily report generation failed:', error);
+        }
+    }, {
+        timezone: 'Europe/Paris'
+    });
+
+    // Nettoyage du cache - toutes les heures
+    cron.schedule('0 * * * *', async () => {
+        cronLogger.debug('Cleaning expired cache entries');
+        try {
+            await cacheService.cleanup();
+        } catch (error) {
+            cronLogger.error('Cache cleanup failed:', error);
+        }
+    });
+
+    // Health check - toutes les 10 minutes
+    cron.schedule('*/10 * * * *', async () => {
+        cronLogger.debug('Running health check');
+        try {
+            await performHealthCheck();
+        } catch (error) {
+            cronLogger.error('Health check failed:', error);
+        }
+    });
+
+    cronLogger.info('All cron jobs scheduled successfully');
+};
+
+const performHealthCheck = async () => {
+    // Vérifier la base de données
+    // Vérifier les services externes
+    // Vérifier l'espace disque
+    // etc.
+};
+```
+
+## Seeding Database
+
+### Commande de Seeding
+```typescript
+import { PrismaClient } from '@prisma/client';
+import { logger } from '@/utils/logger';
+import { userFixtures, postFixtures } from '@/fixtures';
+import { hashPassword } from '@/utils/encryption';
+
+const prisma = new PrismaClient();
+const seedLogger = logger.child({ module: '[Seed]' });
+
+export const seedDatabase = async (environment: string = 'development') => {
+    seedLogger.info(`Starting database seeding for ${environment}`);
+    
+    try {
+        // Nettoyer les données existantes en développement
+        if (environment === 'development') {
+            await cleanDatabase();
+        }
+        
+        // Créer les utilisateurs
+        await seedUsers();
+        
+        // Créer les posts
+        await seedPosts();
+        
+        // Créer les relations
+        await seedRelations();
+        
+        seedLogger.info('Database seeding completed successfully');
+    } catch (error) {
+        seedLogger.error('Database seeding failed:', error);
+        throw error;
+    } finally {
+        await prisma.$disconnect();
+    }
+};
+
+const cleanDatabase = async () => {
+    seedLogger.info('Cleaning existing data...');
+    
+    // Ordre important pour respecter les contraintes FK
+    await prisma.post.deleteMany();
+    await prisma.user.deleteMany();
+    
+    seedLogger.info('Database cleaned');
+};
+
+const seedUsers = async () => {
+    seedLogger.info('Seeding users...');
+    
+    const users = await userFixtures.createMany(10);
+    
+    for (const userData of users) {
+        const hashedPassword = await hashPassword(userData.password);
+        
+        await prisma.user.create({
+            data: {
+                ...userData,
+                password: hashedPassword,
+            },
+        });
+    }
+    
+    // Créer un admin par défaut
+    const adminPassword = await hashPassword('admin123');
+    await prisma.user.create({
+        data: {
+            name: 'Admin User',
+            email: 'admin@example.com',
+            password: adminPassword,
+            role: 'ADMIN',
+        },
+    });
+    
+    seedLogger.info('Users seeded successfully');
+};
+
+const seedPosts = async () => {
+    seedLogger.info('Seeding posts...');
+    
+    const users = await prisma.user.findMany();
+    const posts = await postFixtures.createMany(50);
+    
+    for (const postData of posts) {
+        const randomUser = users[Math.floor(Math.random() * users.length)];
+        
+        await prisma.post.create({
+            data: {
+                ...postData,
+                authorId: randomUser.id,
+            },
+        });
+    }
+    
+    seedLogger.info('Posts seeded successfully');
+};
+
+const seedRelations = async () => {
+    seedLogger.info('Seeding relations...');
+    
+    // Créer des relations entre entités
+    // Likes, comments, follows, etc.
+    
+    seedLogger.info('Relations seeded successfully');
+};
+```
+
+## Nettoyage des Fichiers
+
+### Commande de Cleanup
+```typescript
+import fs from 'fs/promises';
+import path from 'path';
+import { logger } from '@/utils/logger';
+import { minioService } from '@/services';
+
+const cleanupLogger = logger.child({ module: '[Cleanup]' });
+
+export const cleanupOldFiles = async (daysOld: number = 7) => {
+    cleanupLogger.info(`Starting cleanup of files older than ${daysOld} days`);
+    
+    try {
+        // Nettoyer les fichiers temporaires locaux
+        await cleanupTempFiles(daysOld);
+        
+        // Nettoyer les fichiers orphelins dans MinIO
+        await cleanupOrphanedFiles();
+        
+        // Nettoyer les logs anciens
+        await cleanupOldLogs(daysOld);
+        
+        cleanupLogger.info('File cleanup completed successfully');
+    } catch (error) {
+        cleanupLogger.error('File cleanup failed:', error);
+        throw error;
+    }
+};
+
+const cleanupTempFiles = async (daysOld: number) => {
+    const tempDir = path.join(process.cwd(), 'temp');
+    const cutoffDate = new Date();
+    cutoffDate.setDate(cutoffDate.getDate() - daysOld);
+    
+    try {
+        const files = await fs.readdir(tempDir);
+        let deletedCount = 0;
+        
+        for (const file of files) {
+            const filePath = path.join(tempDir, file);
+            const stats = await fs.stat(filePath);
+            
+            if (stats.mtime < cutoffDate) {
+                await fs.unlink(filePath);
+                deletedCount++;
+            }
+        }
+        
+        cleanupLogger.info(`Deleted ${deletedCount} temporary files`);
+    } catch (error) {
+        cleanupLogger.warn('Temp directory cleanup failed:', error);
+    }
+};
+
+const cleanupOrphanedFiles = async () => {
+    try {
+        // Récupérer tous les fichiers référencés en base
+        const referencedFiles = await getReferencedFiles();
+        
+        // Récupérer tous les fichiers dans MinIO
+        const allFiles = await minioService.listAllFiles();
+        
+        // Identifier les fichiers orphelins
+        const orphanedFiles = allFiles.filter(
+            file => !referencedFiles.includes(file.name)
+        );
+        
+        // Supprimer les fichiers orphelins
+        for (const file of orphanedFiles) {
+            await minioService.deleteFile(file.name);
+        }
+        
+        cleanupLogger.info(`Deleted ${orphanedFiles.length} orphaned files`);
+    } catch (error) {
+        cleanupLogger.error('Orphaned files cleanup failed:', error);
+    }
+};
+
+const cleanupOldLogs = async (daysOld: number) => {
+    const logsDir = path.join(process.cwd(), 'logs');
+    const cutoffDate = new Date();
+    cutoffDate.setDate(cutoffDate.getDate() - daysOld);
+    
+    try {
+        const files = await fs.readdir(logsDir);
+        let deletedCount = 0;
+        
+        for (const file of files) {
+            if (!file.endsWith('.log')) continue;
+            
+            const filePath = path.join(logsDir, file);
+            const stats = await fs.stat(filePath);
+            
+            if (stats.mtime < cutoffDate) {
+                await fs.unlink(filePath);
+                deletedCount++;
+            }
+        }
+        
+        cleanupLogger.info(`Deleted ${deletedCount} old log files`);
+    } catch (error) {
+        cleanupLogger.warn('Log files cleanup failed:', error);
+    }
+};
+
+const getReferencedFiles = async (): Promise<string[]> => {
+    // Récupérer tous les noms de fichiers référencés dans la base
+    // depuis les différentes tables qui stockent des fichiers
+    return [];
+};
+```
+
+## Envoi d'Emails
+
+### Commande d'Envoi d'Emails
+```typescript
+import { PrismaClient } from '@prisma/client';
+import { logger } from '@/utils/logger';
+import { emailService } from '@/services';
+
+const prisma = new PrismaClient();
+const emailLogger = logger.child({ module: '[EmailSender]' });
+
+export const sendScheduledEmails = async () => {
+    try {
+        // Récupérer les emails en attente
+        const pendingEmails = await prisma.emailQueue.findMany({
+            where: {
+                status: 'PENDING',
+                scheduledAt: {
+                    lte: new Date(),
+                },
+            },
+            take: 50, // Traiter par batch
+        });
+        
+        if (pendingEmails.length === 0) {
+            return;
+        }
+        
+        emailLogger.info(`Processing ${pendingEmails.length} scheduled emails`);
+        
+        for (const email of pendingEmails) {
+            try {
+                await processEmail(email);
+            } catch (error) {
+                emailLogger.error(`Failed to process email ${email.id}:`, error);
+                
+                // Marquer comme échoué
+                await prisma.emailQueue.update({
+                    where: { id: email.id },
+                    data: {
+                        status: 'FAILED',
+                        error: error.message,
+                        attempts: { increment: 1 },
+                    },
+                });
+            }
+        }
+        
+        emailLogger.info('Scheduled emails processing completed');
+    } catch (error) {
+        emailLogger.error('Scheduled emails processing failed:', error);
+    }
+};
+
+const processEmail = async (email: any) => {
+    // Marquer comme en cours de traitement
+    await prisma.emailQueue.update({
+        where: { id: email.id },
+        data: {
+            status: 'PROCESSING',
+            attempts: { increment: 1 },
+        },
+    });
+    
+    // Envoyer l'email
+    await emailService.sendEmail({
+        to: email.to,
+        subject: email.subject,
+        template: email.template,
+        data: email.data,
+    });
+    
+    // Marquer comme envoyé
+    await prisma.emailQueue.update({
+        where: { id: email.id },
+        data: {
+            status: 'SENT',
+            sentAt: new Date(),
+        },
+    });
+    
+    emailLogger.debug(`Email sent successfully: ${email.id}`);
+};
+
+export const queueEmail = async (emailData: {
+    to: string;
+    subject: string;
+    template: string;
+    data: any;
+    scheduledAt?: Date;
+}) => {
+    return prisma.emailQueue.create({
+        data: {
+            ...emailData,
+            status: 'PENDING',
+            scheduledAt: emailData.scheduledAt || new Date(),
+        },
+    });
+};
+```
+
+## Conventions Commands
+
+### Structure Standard
+- Une commande par fichier
+- Logging approprié pour chaque action
+- Gestion d'erreurs robuste
+- Configuration via variables d'environnement
+- Tests unitaires pour les commandes critiques
+
+### Bonnes Pratiques
+- Commandes idempotentes quand possible
+- Traitement par batch pour les gros volumes
+- Timeout approprié pour les tâches longues
+- Monitoring et alertes pour les échecs
+- Documentation des paramètres et comportements
+
+### Planification Cron
+- Utiliser des heures creuses pour les tâches lourdes
+- Éviter les conflits entre tâches
+- Prévoir des mécanismes de retry
+- Logger les performances et durées
+- Configurer les timezones appropriées
+

@@ -1,0 +1,30 @@
+FROM node:slim
+
+# Installer les dépendances système nécessaires pour Prisma
+RUN apt-get update -y && apt-get install -y openssl
+
+# Installer pnpm globalement
+RUN npm install -g pnpm
+
+WORKDIR /app
+
+# Copier les fichiers package.json et le workspace yaml
+COPY pnpm-workspace.yaml ./
+COPY package.json ./
+COPY backend/package.json ./backend/
+COPY shared/package.json ./shared/
+
+# Copier le schema Prisma
+COPY backend/prisma ./backend/prisma
+
+# Installer les dépendances avec pnpm
+RUN pnpm install
+
+# Générer les types Prisma
+WORKDIR /app/backend
+RUN npx prisma generate
+
+# Le répertoire de travail final
+WORKDIR /app/backend
+
+# Les volumes seront montés lors de l'exécution

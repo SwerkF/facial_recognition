@@ -1,0 +1,97 @@
+{
+  "rules": [
+    {
+      "name": "frontend-global",
+      "file": ".cursor/rules/frontend-global.mdc",
+      "globs": [
+        "frontend/**/*.ts",
+        "frontend/**/*.tsx",
+        "frontend/**/*.js",
+        "frontend/**/*.jsx"
+      ]
+    },
+    {
+      "name": "frontend-api",
+      "file": ".cursor/rules/frontend-api.mdc",
+      "globs": ["frontend/src/api/**/*.ts", "frontend/src/api/**/*.tsx"]
+    },
+    {
+      "name": "frontend-components",
+      "file": ".cursor/rules/frontend-components.mdc",
+      "globs": [
+        "frontend/src/components/**/*.tsx",
+        "frontend/src/components/**/*.ts",
+        "frontend/src/components/**/*.spec.tsx"
+      ]
+    },
+    {
+      "name": "frontend-features",
+      "file": ".cursor/rules/frontend-features.mdc",
+      "globs": [
+        "frontend/src/features/**/*.tsx",
+        "frontend/src/features/**/*.ts"
+      ]
+    },
+    {
+      "name": "frontend-stores",
+      "file": ".cursor/rules/frontend-stores.mdc",
+      "globs": ["frontend/src/stores/**/*.ts", "frontend/src/stores/**/*.tsx"]
+    },
+    {
+      "name": "backend-repositories",
+      "file": ".cursor/rules/backend-repositories.mdc",
+      "globs": ["backend/src/repositories/**/*.ts"]
+    },
+    {
+      "name": "backend-services",
+      "file": ".cursor/rules/backend-services.mdc",
+      "globs": ["backend/src/services/**/*.ts"]
+    },
+    {
+      "name": "backend-controllers",
+      "file": ".cursor/rules/backend-controllers.mdc",
+      "globs": ["backend/src/controllers/**/*.ts"]
+    },
+    {
+      "name": "backend-routes",
+      "file": ".cursor/rules/backend-routes.mdc",
+      "globs": ["backend/src/routes/**/*.ts"]
+    },
+    {
+      "name": "backend-transformers",
+      "file": ".cursor/rules/backend-transformers.mdc",
+      "globs": ["backend/src/transformers/**/*.ts"]
+    },
+    {
+      "name": "backend-fixtures",
+      "file": ".cursor/rules/backend-fixtures.mdc",
+      "globs": ["backend/src/fixtures/**/*.ts"]
+    },
+    {
+      "name": "backend-middleware",
+      "file": ".cursor/rules/backend-middleware.mdc",
+      "globs": ["backend/src/middleware/**/*.ts"]
+    },
+    {
+      "name": "backend-commands",
+      "file": ".cursor/rules/backend-commands.mdc",
+      "globs": ["backend/src/commands/**/*.ts"]
+    },
+    {
+      "name": "prisma",
+      "file": ".cursor/rules/prisma.mdc",
+      "globs": ["backend/prisma/**/*.prisma", "backend/src/config/prisma.ts"]
+    },
+    {
+      "name": "docker",
+      "file": ".cursor/rules/docker.mdc",
+      "globs": [
+        "docker/**/*.yml",
+        "docker/**/*.yaml",
+        "**/Dockerfile",
+        "**/Dockerfile.*",
+        "docker/**/*.ps1"
+      ]
+    }
+  ]
+}

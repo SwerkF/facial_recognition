@@ -1,0 +1,30 @@
+model Token {
+  id               String   @id @default(uuid())
+  ownedById        String?   @map("owned_by_id")
+  token            String   @db.Text
+  type             String
+  scopes           String
+  deviceName       String?   @map("device_name")
+  deviceIp         String?   @map("device_ip")
+  userAgent        String?   @map("user_agent")
+  browserName      String?   @map("browser_name")
+  browserVersion   String?   @map("browser_version")
+  osName           String?   @map("os_name")
+  osVersion        String?   @map("os_version")
+  deviceType       String?   @map("device_type")
+  deviceVendor     String?   @map("device_vendor")
+  deviceModel      String?   @map("device_model")
+  locationCity     String?  @map("location_city")
+  locationCountry  String?  @map("location_country")
+  locationLat      Float?   @map("location_lat")
+  locationLon      Float?   @map("location_lon")
+  createdAt        DateTime @default(now()) @map("created_at")
+  updatedAt        DateTime @updatedAt @map("updated_at")
+  expiresAt        DateTime @map("expires_at")
+  unvailableAt     DateTime? @map("unvailable_at")
+
+  owner            User?    @relation(fields: [ownedById], references: [id])
+  invitation       InvitationRequest? @relation("TokenInvitation")
+
+  @@map("tokens")
+}

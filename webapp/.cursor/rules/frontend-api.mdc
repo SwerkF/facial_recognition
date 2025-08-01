@@ -1,0 +1,358 @@
+---
+description: Rules for creating customs api requests for the frontend.
+globs: 
+alwaysApply: false
+---
+# Règles Frontend API - Services et Queries
+
+## Structure API Layer
+
+### Organisation
+```
+frontend/src/api/
+├── queries/             # TanStack Query hooks
+│   ├── authQueries.ts   # Queries d'authentification
+│   ├── userQueries.ts   # Queries utilisateur
+│   └── index.ts         # Barrel exports
+├── authService.ts       # Service d'authentification
+├── userService.ts       # Service utilisateur
+├── interceptor.ts       # Axios interceptor
+└── index.ts             # Exports centralisés
+```
+
+## Services API
+
+### Structure d'un Service
+```typescript
+import axios from 'axios';
+import { ApiResponse } from '@/types/api';
+import { GetAllUsers, UpdateUser, UserDto } from '@shared/dto';
+
+class UserService {
+    private readonly baseUrl = '/api/users';
+
+    async getAllUsers(params: GetAllUsers): Promise<ApiResponse<UserDto[]>> {
+        const response = await axios.get(this.baseUrl, { params });
+        return response.data;
+    }
+
+    async getUserById(id: string): Promise<ApiResponse<UserDto>> {
+        const response = await axios.get(`${this.baseUrl}/${id}`);
+        return response.data;
+    }
+
+    async updateUser(id: string, user: UpdateUser): Promise<ApiResponse<UserDto>> {
+        const response = await axios.put(`${this.baseUrl}/${id}`, user);
+        return response.data;
+    }
+
+    async deleteUser(id: string): Promise<ApiResponse<void>> {
+        const response = await axios.delete(`${this.baseUrl}/${id}`);
+        return response.data;
+    }
+}
+
+export const userService = new UserService();
+```
+
+### Conventions Services
+- **Classe Service** : Une classe par domaine métier
+- **Instance exportée** : Export d'une instance singleton
+- **URLs relatives** : Utiliser des chemins relatifs à l'API
+- **Types stricts** : Typer les paramètres et retours
+- **Gestion d'erreurs** : Laisser les erreurs remonter aux queries
+
+## TanStack Query Hooks
+
+### Query Hooks (GET)
+```typescript
+import { useQuery, UseQueryOptions } from '@tanstack/react-query';
+import { userService } from '@/api/userService';
+import { GetAllUsers, UserDto } from '@shared/dto';
+
+// Query simple
+export const useGetAllUsers = (searchParams: GetAllUsers) => {
+    return useQuery<UserDto[]>({
+        queryKey: ['users', searchParams],
+        queryFn: async () => {
+            const response = await userService.getAllUsers(searchParams);
+            return response.data;
+        },
+        staleTime: 5 * 60 * 1000, // 5 minutes
+        gcTime: 10 * 60 * 1000,   // 10 minutes
+    });
+};
+
+// Query avec paramètre dynamique
+export const useGetUserById = (userId: string) => {
+    return useQuery<UserDto>({
+        queryKey: ['users', userId],
+        queryFn: async () => {
+            const response = await userService.getUserById(userId);
+            return response.data;
+        },
+        enabled: !!userId, // N'exécuter que si userId est défini
+    });
+};
+
+// Query avec options personnalisées
+export const useGetUsersWithOptions = (
+    searchParams: GetAllUsers,
+    options?: Omit<UseQueryOptions<UserDto[]>, 'queryKey' | 'queryFn'>
+) => {
+    return useQuery<UserDto[]>({
+        queryKey: ['users', searchParams],
+        queryFn: async () => {
+            const response = await userService.getAllUsers(searchParams);
+            return response.data;
+        },
+        ...options,
+    });
+};
+```
+
+### Mutation Hooks (POST/PUT/DELETE)
+```typescript
+import { useMutation, useQueryClient } from '@tanstack/react-query';
+import { toast } from 'react-toastify';
+
+// Mutation simple
+export const useUpdateUser = () => {
+    const queryClient = useQueryClient();
+
+    return useMutation<UserDto, Error, { userId: string; user: UpdateUser }>({
+        mutationFn: async ({ userId, user }) => {
+            const response = await userService.updateUser(userId, user);
+            return response.data;
+        },
+        onSuccess: (data, variables) => {
+            // Invalidation du cache
+            queryClient.invalidateQueries({ queryKey: ['users'] });
+            queryClient.invalidateQueries({ queryKey: ['users', variables.userId] });
+            
+            // Notification utilisateur
+            toast.success('Utilisateur mis à jour avec succès');
+        },
+        onError: (error) => {
+            console.error('Update failed:', error);
+            toast.error('Erreur lors de la mise à jour');
+        },
+    });
+};
+
+// Mutation avec optimistic update
+export const useDeleteUser = () => {
+    const queryClient = useQueryClient();
+
+    return useMutation<void, Error, string>({
+        mutationFn: async (userId: string) => {
+            const response = await userService.deleteUser(userId);
+            return response.data;
+        },
+        onMutate: async (userId) => {
+            // Annuler les requêtes en cours
+            await queryClient.cancelQueries({ queryKey: ['users'] });
+
+            // Snapshot de l'état actuel
+            const previousUsers = queryClient.getQueryData<UserDto[]>(['users']);
+
+            // Optimistic update
+            if (previousUsers) {
+                queryClient.setQueryData<UserDto[]>(
+                    ['users'],
+                    previousUsers.filter(user => user.id !== userId)
+                );
+            }
+
+            return { previousUsers };
+        },
+        onError: (error, userId, context) => {
+            // Rollback en cas d'erreur
+            if (context?.previousUsers) {
+                queryClient.setQueryData(['users'], context.previousUsers);
+            }
+            toast.error('Erreur lors de la suppression');
+        },
+        onSettled: () => {
+            // Rafraîchir les données dans tous les cas
+            queryClient.invalidateQueries({ queryKey: ['users'] });
+        },
+    });
+};
+```
+
+## Configuration TanStack Query
+
+### QueryClient Setup
+```typescript
+// configs/queryClient.ts
+import { QueryClient } from '@tanstack/react-query';
+
+const queryClient = new QueryClient({
+    defaultOptions: {
+        queries: {
+            staleTime: 5 * 60 * 1000,      // 5 minutes
+            gcTime: 10 * 60 * 1000,        // 10 minutes
+            retry: 3,
+            retryDelay: attemptIndex => Math.min(1000 * 2 ** attemptIndex, 30000),
+            refetchOnWindowFocus: false,
+        },
+        mutations: {
+            retry: 1,
+        },
+    },
+});
+
+export default queryClient;
+```
+
+### Query Keys Factory
+```typescript
+// api/queryKeys.ts
+export const queryKeys = {
+    all: ['api'] as const,
+    
+    users: () => [...queryKeys.all, 'users'] as const,
+    usersList: (params: GetAllUsers) => [...queryKeys.users(), 'list', params] as const,
+    usersDetail: (id: string) => [...queryKeys.users(), 'detail', id] as const,
+    
+    auth: () => [...queryKeys.all, 'auth'] as const,
+    currentUser: () => [...queryKeys.auth(), 'current'] as const,
+} as const;
+
+// Utilisation dans les queries
+export const useGetAllUsers = (searchParams: GetAllUsers) => {
+    return useQuery<UserDto[]>({
+        queryKey: queryKeys.usersList(searchParams),
+        queryFn: async () => {
+            const response = await userService.getAllUsers(searchParams);
+            return response.data;
+        },
+    });
+};
+```
+
+## Interceptor Axios
+
+### Configuration des Intercepteurs
+```typescript
+// api/interceptor.ts
+import axios, { AxiosError, AxiosResponse } from 'axios';
+import { useAuthStore } from '@/stores/authStore';
+import { toast } from 'react-toastify';
+
+// Configuration de base
+axios.defaults.baseURL = import.meta.env.VITE_API_URL || 'http://localhost:3000';
+axios.defaults.headers.common['Content-Type'] = 'application/json';
+
+// Request interceptor pour ajouter le token
+axios.interceptors.request.use(
+    (config) => {
+        const token = useAuthStore.getState().accessToken;
+        if (token) {
+            config.headers.Authorization = `Bearer ${token}`;
+        }
+        return config;
+    },
+    (error) => {
+        return Promise.reject(error);
+    }
+);
+
+// Response interceptor pour gérer les erreurs
+axios.interceptors.response.use(
+    (response: AxiosResponse) => {
+        return response;
+    },
+    async (error: AxiosError) => {
+        const { response } = error;
+
+        if (response?.status === 401) {
+            // Token expiré ou invalide
+            useAuthStore.getState().logout();
+            toast.error('Session expirée, veuillez vous reconnecter');
+            
+            // Redirection vers login si nécessaire
+            if (window.location.pathname !== '/auth/login') {
+                window.location.href = '/auth/login';
+            }
+        } else if (response?.status === 403) {
+            toast.error('Accès refusé');
+        } else if (response?.status >= 500) {
+            toast.error('Erreur serveur, veuillez réessayer');
+        }
+
+        return Promise.reject(error);
+    }
+);
+
+export default axios;
+```
+
+## Patterns Avancés
+
+### Infinite Queries
+```typescript
+export const useInfiniteUsers = (searchParams: Omit<GetAllUsers, 'page'>) => {
+    return useInfiniteQuery({
+        queryKey: ['users', 'infinite', searchParams],
+        queryFn: async ({ pageParam = 1 }) => {
+            const response = await userService.getAllUsers({
+                ...searchParams,
+                page: pageParam,
+            });
+            return response.data;
+        },
+        getNextPageParam: (lastPage, allPages) => {
+            const hasNextPage = lastPage.length === searchParams.limit;
+            return hasNextPage ? allPages.length + 1 : undefined;
+        },
+        initialPageParam: 1,
+    });
+};
+```
+
+### Dependent Queries
+```typescript
+export const useUserWithPosts = (userId: string) => {
+    const userQuery = useGetUserById(userId);
+    
+    const postsQuery = useQuery({
+        queryKey: ['posts', 'user', userId],
+        queryFn: async () => {
+            const response = await postService.getPostsByUser(userId);
+            return response.data;
+        },
+        enabled: !!userQuery.data, // N'exécuter que si l'utilisateur est chargé
+    });
+
+    return {
+        user: userQuery.data,
+        posts: postsQuery.data,
+        isLoading: userQuery.isLoading || postsQuery.isLoading,
+        error: userQuery.error || postsQuery.error,
+    };
+};
+```
+
+## Conventions API
+
+### Gestion d'Erreurs
+- **Services** : Laisser les erreurs axios remonter
+- **Queries** : Gérer les erreurs dans `onError`
+- **Interceptor** : Gestion globale des erreurs HTTP
+- **Toast** : Notifications utilisateur pour les erreurs
+
+### Cache Management
+- **Query Keys** : Utiliser une factory pour la cohérence
+- **Stale Time** : 5 minutes par défaut
+- **GC Time** : 10 minutes par défaut
+- **Invalidation** : Après les mutations réussies
+- **Optimistic Updates** : Pour une UX fluide
+
+### Types et Validation
+- **DTOs partagés** : Utiliser `@shared/dto`
+- **Types API** : Interfaces pour les réponses
+- **Validation** : Zod schemas côté frontend si nécessaire
+
+- **Type Safety** : Types stricts pour tous les appels API

@@ -1,0 +1,627 @@
+---
+description: Rules for creating customs stores for the frontend.
+globs: 
+alwaysApply: false
+---
+# Règles Frontend Stores - Gestion d'État avec Zustand
+
+## Architecture des Stores
+
+### Organisation
+```
+frontend/src/stores/
+├── authStore.ts         # État d'authentification
+├── userStore.ts         # État utilisateurs
+├── uiStore.ts           # État UI global
+├── notificationStore.ts # État notifications
+├── types.ts             # Types partagés
+└── index.ts             # Exports centralisés
+```
+
+## Pattern Store Zustand
+
+### Store d'Authentification
+```typescript
+// stores/authStore.ts
+import { create } from 'zustand';
+import { persist, createJSONStorage } from 'zustand/middleware';
+import { immer } from 'zustand/middleware/immer';
+import Cookies from 'js-cookie';
+
+import { authService } from '@/api/authService';
+import { UserDto } from '@shared/dto';
+
+interface AuthState {
+    // État
+    user: UserDto | null;
+    isAuthenticated: boolean;
+    accessToken: string | null;
+    refreshToken: string | null;
+    isInitialized: boolean;
+    
+    // Actions
+    setUser: (user: UserDto | null) => void;
+    setTokens: (accessToken: string, refreshToken: string) => void;
+    login: (accessToken: string, refreshToken: string) => void;
+    logout: () => void;
+    initialize: () => Promise<void>;
+    updateUser: (updates: Partial<UserDto>) => void;
+}
+
+export const useAuthStore = create<AuthState>()(
+    persist(
+        immer((set, get) => ({
+            // État initial
+            user: null,
+            isAuthenticated: false,
+            accessToken: null,
+            refreshToken: null,
+            isInitialized: false,
+
+            // Actions
+            setUser: (user) => set((state) => {
+                state.user = user;
+            }),
+
+            setTokens: (accessToken, refreshToken) => set((state) => {
+                state.accessToken = accessToken;
+                state.refreshToken = refreshToken;
+                state.isAuthenticated = true;
+                
+                // Stocker dans les cookies
+                Cookies.set('accessToken', accessToken, { expires: 7 });
+                Cookies.set('refreshToken', refreshToken, { expires: 30 });
+            }),
+
+            login: (accessToken, refreshToken) => set((state) => {
+                state.accessToken = accessToken;
+                state.refreshToken = refreshToken;
+                state.isAuthenticated = true;
+                
+                // Stocker dans les cookies
+                Cookies.set('accessToken', accessToken, { expires: 7 });
+                Cookies.set('refreshToken', refreshToken, { expires: 30 });
+            }),
+
+            logout: () => set((state) => {
+                state.user = null;
+                state.isAuthenticated = false;
+                state.accessToken = null;
+                state.refreshToken = null;
+                
+                // Nettoyer les cookies
+                Cookies.remove('accessToken');
+                Cookies.remove('refreshToken');
+            }),
+
+            updateUser: (updates) => set((state) => {
+                if (state.user) {
+                    Object.assign(state.user, updates);
+                }
+            }),
+
+            initialize: async () => {
+                if (get().isInitialized) return;
+
+                const accessToken = Cookies.get('accessToken');
+                const refreshToken = Cookies.get('refreshToken');
+
+                if (accessToken && refreshToken) {
+                    try {
+                        const response = await authService.getUserByToken();
+                        
+                        set((state) => {
+                            state.user = response.data;
+                            state.isAuthenticated = true;
+                            state.accessToken = accessToken;
+                            state.refreshToken = refreshToken;
+                            state.isInitialized = true;
+                        });
+                    } catch (error) {
+                        console.error('Failed to initialize auth:', error);
+                        get().logout();
+                        set((state) => {
+                            state.isInitialized = true;
+                        });
+                    }
+                } else {
+                    set((state) => {
+                        state.isInitialized = true;
+                    });
+                }
+            },
+        })),
+        {
+            name: 'auth-store',
+            storage: createJSONStorage(() => localStorage),
+            partialize: (state) => ({
+                accessToken: state.accessToken,
+                refreshToken: state.refreshToken,
+                isAuthenticated: state.isAuthenticated,
+            }),
+        }
+    )
+);
+
+// Sélecteurs dérivés
+export const useIsAdmin = () => 
+    useAuthStore(state => state.user?.role === 'ADMIN');
+
+export const useUserName = () => 
+    useAuthStore(state => state.user?.name || 'Utilisateur');
+```
+
+### Store UI Global
+```typescript
+// stores/uiStore.ts
+import { create } from 'zustand';
+import { immer } from 'zustand/middleware/immer';
+
+interface Modal {
+    id: string;
+    component: React.ComponentType<any>;
+    props?: Record<string, any>;
+}
+
+interface UIState {
+    // État
+    sidebarOpen: boolean;
+    theme: 'light' | 'dark' | 'auto';
+    modals: Modal[];
+    loading: {
+        global: boolean;
+        [key: string]: boolean;
+    };
+    
+    // Actions
+    toggleSidebar: () => void;
+    setSidebarOpen: (open: boolean) => void;
+    setTheme: (theme: 'light' | 'dark' | 'auto') => void;
+    openModal: (modal: Modal) => void;
+    closeModal: (id: string) => void;
+    closeAllModals: () => void;
+    setLoading: (key: string, loading: boolean) => void;
+    setGlobalLoading: (loading: boolean) => void;
+}
+
+export const useUIStore = create<UIState>()(
+    immer((set, get) => ({
+        // État initial
+        sidebarOpen: false,
+        theme: 'light',
+        modals: [],
+        loading: {
+            global: false,
+        },
+
+        // Actions
+        toggleSidebar: () => set((state) => {
+            state.sidebarOpen = !state.sidebarOpen;
+        }),
+
+        setSidebarOpen: (open) => set((state) => {
+            state.sidebarOpen = open;
+        }),
+
+        setTheme: (theme) => set((state) => {
+            state.theme = theme;
+            // Appliquer le thème au DOM
+            document.documentElement.classList.toggle('dark', theme === 'dark');
+        }),
+
+        openModal: (modal) => set((state) => {
+            state.modals.push(modal);
+        }),
+
+        closeModal: (id) => set((state) => {
+            state.modals = state.modals.filter(modal => modal.id !== id);
+        }),
+
+        closeAllModals: () => set((state) => {
+            state.modals = [];
+        }),
+
+        setLoading: (key, loading) => set((state) => {
+            state.loading[key] = loading;
+        }),
+
+        setGlobalLoading: (loading) => set((state) => {
+            state.loading.global = loading;
+        }),
+    }))
+);
+
+// Hooks dérivés
+export const useModal = (id: string) => {
+    const modal = useUIStore(state => 
+        state.modals.find(m => m.id === id)
+    );
+    
+    const openModal = useUIStore(state => state.openModal);
+    const closeModal = useUIStore(state => state.closeModal);
+    
+    return {
+        modal,
+        isOpen: !!modal,
+        open: (component: React.ComponentType<any>, props?: Record<string, any>) =>
+            openModal({ id, component, props }),
+        close: () => closeModal(id),
+    };
+};
+
+export const useLoading = (key: string) => {
+    const loading = useUIStore(state => state.loading[key] || false);
+    const setLoading = useUIStore(state => state.setLoading);
+    
+    return {
+        loading,
+        setLoading: (value: boolean) => setLoading(key, value),
+    };
+};
+```
+
+### Store de Notifications
+```typescript
+// stores/notificationStore.ts
+import { create } from 'zustand';
+import { immer } from 'zustand/middleware/immer';
+
+interface Notification {
+    id: string;
+    type: 'success' | 'error' | 'warning' | 'info';
+    title: string;
+    message?: string;
+    duration?: number;
+    actions?: Array<{
+        label: string;
+        action: () => void;
+    }>;
+    createdAt: Date;
+}
+
+interface NotificationState {
+    notifications: Notification[];
+    addNotification: (notification: Omit<Notification, 'id' | 'createdAt'>) => string;
+    removeNotification: (id: string) => void;
+    clearAll: () => void;
+}
+
+export const useNotificationStore = create<NotificationState>()(
+    immer((set, get) => ({
+        notifications: [],
+
+        addNotification: (notification) => {
+            const id = crypto.randomUUID();
+            const newNotification: Notification = {
+                ...notification,
+                id,
+                createdAt: new Date(),
+            };
+
+            set((state) => {
+                state.notifications.push(newNotification);
+            });
+
+            // Auto-remove après la durée spécifiée
+            if (notification.duration !== 0) {
+                const duration = notification.duration || 5000;
+                setTimeout(() => {
+                    get().removeNotification(id);
+                }, duration);
+            }
+
+            return id;
+        },
+
+        removeNotification: (id) => set((state) => {
+            state.notifications = state.notifications.filter(n => n.id !== id);
+        }),
+
+        clearAll: () => set((state) => {
+            state.notifications = [];
+        }),
+    }))
+);
+
+// Hook helper pour les notifications
+export const useNotify = () => {
+    const addNotification = useNotificationStore(state => state.addNotification);
+
+    return {
+        success: (title: string, message?: string) =>
+            addNotification({ type: 'success', title, message }),
+        
+        error: (title: string, message?: string) =>
+            addNotification({ type: 'error', title, message }),
+        
+        warning: (title: string, message?: string) =>
+            addNotification({ type: 'warning', title, message }),
+        
+        info: (title: string, message?: string) =>
+            addNotification({ type: 'info', title, message }),
+        
+        custom: (notification: Omit<Notification, 'id' | 'createdAt'>) =>
+            addNotification(notification),
+    };
+};
+```
+
+## Store avec Actions Async
+
+### Store de Données avec Cache Local
+```typescript
+// stores/userStore.ts
+import { create } from 'zustand';
+import { immer } from 'zustand/middleware/immer';
+
+import { userService } from '@/api/userService';
+import { UserDto, GetAllUsers } from '@shared/dto';
+
+interface UserState {
+    // État
+    users: UserDto[];
+    selectedUser: UserDto | null;
+    filters: GetAllUsers;
+    loading: {
+        fetchUsers: boolean;
+        fetchUser: boolean;
+        updateUser: boolean;
+        deleteUser: boolean;
+    };
+    error: string | null;
+    lastFetch: Date | null;
+    
+    // Actions
+    setUsers: (users: UserDto[]) => void;
+    setSelectedUser: (user: UserDto | null) => void;
+    setFilters: (filters: Partial<GetAllUsers>) => void;
+    setLoading: (key: keyof UserState['loading'], loading: boolean) => void;
+    setError: (error: string | null) => void;
+    
+    // Actions async
+    fetchUsers: (filters?: GetAllUsers) => Promise<void>;
+    fetchUserById: (id: string) => Promise<void>;
+    updateUser: (id: string, data: Partial<UserDto>) => Promise<void>;
+    deleteUser: (id: string) => Promise<void>;
+    addUser: (user: UserDto) => void;
+    clearCache: () => void;
+}
+
+export const useUserStore = create<UserState>()(
+    immer((set, get) => ({
+        // État initial
+        users: [],
+        selectedUser: null,
+        filters: { page: 1, limit: 10, search: '' },
+        loading: {
+            fetchUsers: false,
+            fetchUser: false,
+            updateUser: false,
+            deleteUser: false,
+        },
+        error: null,
+        lastFetch: null,
+
+        // Actions synchrones
+        setUsers: (users) => set((state) => {
+            state.users = users;
+            state.lastFetch = new Date();
+        }),
+
+        setSelectedUser: (user) => set((state) => {
+            state.selectedUser = user;
+        }),
+
+        setFilters: (filters) => set((state) => {
+            Object.assign(state.filters, filters);
+        }),
+
+        setLoading: (key, loading) => set((state) => {
+            state.loading[key] = loading;
+        }),
+
+        setError: (error) => set((state) => {
+            state.error = error;
+        }),
+
+        addUser: (user) => set((state) => {
+            state.users.push(user);
+        }),
+
+        clearCache: () => set((state) => {
+            state.users = [];
+            state.selectedUser = null;
+            state.lastFetch = null;
+        }),
+
+        // Actions asynchrones
+        fetchUsers: async (filters) => {
+            const { setLoading, setError, setUsers, setFilters } = get();
+            
+            if (filters) {
+                setFilters(filters);
+            }
+
+            setLoading('fetchUsers', true);
+            setError(null);
+
+            try {
+                const response = await userService.getAllUsers(get().filters);
+                setUsers(response.data);
+            } catch (error) {
+                setError(error instanceof Error ? error.message : 'Erreur lors du chargement');
+            } finally {
+                setLoading('fetchUsers', false);
+            }
+        },
+
+        fetchUserById: async (id) => {
+            const { setLoading, setError, setSelectedUser } = get();
+
+            setLoading('fetchUser', true);
+            setError(null);
+
+            try {
+                const response = await userService.getUserById(id);
+                setSelectedUser(response.data);
+            } catch (error) {
+                setError(error instanceof Error ? error.message : 'Erreur lors du chargement');
+            } finally {
+                setLoading('fetchUser', false);
+            }
+        },
+
+        updateUser: async (id, data) => {
+            const { setLoading, setError } = get();
+
+            setLoading('updateUser', true);
+            setError(null);
+
+            try {
+                const response = await userService.updateUser(id, data);
+                
+                // Mettre à jour le cache local
+                set((state) => {
+                    const index = state.users.findIndex(u => u.id === id);
+                    if (index !== -1) {
+                        state.users[index] = response.data;
+                    }
+                    
+                    if (state.selectedUser?.id === id) {
+                        state.selectedUser = response.data;
+                    }
+                });
+            } catch (error) {
+                setError(error instanceof Error ? error.message : 'Erreur lors de la mise à jour');
+                throw error;
+            } finally {
+                setLoading('updateUser', false);
+            }
+        },
+
+        deleteUser: async (id) => {
+            const { setLoading, setError } = get();
+
+            setLoading('deleteUser', true);
+            setError(null);
+
+            try {
+                await userService.deleteUser(id);
+                
+                // Supprimer du cache local
+                set((state) => {
+                    state.users = state.users.filter(u => u.id !== id);
+                    
+                    if (state.selectedUser?.id === id) {
+                        state.selectedUser = null;
+                    }
+                });
+            } catch (error) {
+                setError(error instanceof Error ? error.message : 'Erreur lors de la suppression');
+                throw error;
+            } finally {
+                setLoading('deleteUser', false);
+            }
+        },
+    }))
+);
+
+// Sélecteurs dérivés
+export const useUserById = (id: string) =>
+    useUserStore(state => state.users.find(user => user.id === id));
+
+export const useFilteredUsers = (customFilter?: (user: UserDto) => boolean) =>
+    useUserStore(state => 
+        customFilter ? state.users.filter(customFilter) : state.users
+    );
+```
+
+## DevTools et Debugging
+
+### Configuration DevTools
+```typescript
+// stores/middleware.ts
+import { StateCreator } from 'zustand';
+import { devtools } from 'zustand/middleware';
+
+export const withDevtools = <T>(
+    stateCreator: StateCreator<T>,
+    name: string
+) => {
+    return devtools(stateCreator, { name });
+};
+
+// Usage
+export const useAuthStore = create<AuthState>()(
+    withDevtools(
+        persist(
+            immer((set, get) => ({
+                // ... state and actions
+            })),
+            {
+                name: 'auth-store',
+                storage: createJSONStorage(() => localStorage),
+            }
+        ),
+        'AuthStore'
+    )
+);
+```
+
+## Patterns d'Utilisation
+
+### Hook Composite
+```typescript
+// hooks/useAuth.ts
+import { useAuthStore } from '@/stores/authStore';
+import { useNotify } from '@/stores/notificationStore';
+
+export const useAuth = () => {
+    const authStore = useAuthStore();
+    const notify = useNotify();
+
+    const login = async (credentials: LoginDto) => {
+        try {
+            const response = await authService.login(credentials);
+            authStore.login(response.accessToken, response.refreshToken);
+            authStore.setUser(response.user);
+            notify.success('Connexion réussie');
+        } catch (error) {
+            notify.error('Erreur de connexion', error.message);
+            throw error;
+        }
+    };
+
+    const logout = () => {
+        authStore.logout();
+        notify.info('Vous avez été déconnecté');
+    };
+
+    return {
+        ...authStore,
+        login,
+        logout,
+    };
+};
+```
+
+## Conventions Stores
+
+### Structure
+- **Interface claire** : Types d'état et actions séparés
+- **Actions immutables** : Utiliser Immer pour les mutations
+- **Nommage cohérent** : Actions verbe, état nom
+- **Sélecteurs** : Fonctions dérivées pour l'état calculé
+
+### Performance
+- **Sélecteurs granulaires** : Éviter les re-renders inutiles
+- **Persistence sélective** : Ne persister que les données nécessaires
+- **Cache intelligent** : Gérer la fraîcheur des données
+- **Cleanup** : Nettoyer l'état quand nécessaire
+
+### Debugging
+- **DevTools** : Utiliser Redux DevTools
+- **Nommage** : Noms explicites pour les stores
+- **Logging** : Logger les actions importantes
+
+- **Error handling** : Gérer les erreurs gracieusement

@@ -1,0 +1,16 @@
+model User {
+  id               String    @id @default(uuid())
+  email            String    @unique
+  password         String
+  firstName        String
+  lastName         String
+  roles            Json      @default("[\"ROLE_USER\"]")
+  tokens           Token[]
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
+  deletedAt        DateTime?
+  lastLoginAt      DateTime?
+
+  invitationRequests InvitationRequest[] @relation("InvitedUser")
+  invitations InvitationRequest[] @relation("InviterUser")
+}

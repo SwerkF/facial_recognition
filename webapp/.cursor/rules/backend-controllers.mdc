@@ -1,0 +1,195 @@
+---
+description: Rules for creating customs controllers for the backend.
+globs: 
+alwaysApply: false
+---
+# Règles pour les Controllers Backend
+
+## Structure et Organisation
+
+Les controllers doivent suivre cette structure basée sur `asyncHandler` :
+
+```typescript
+import { repository } from '@/repositories';
+import { transformer } from '@/transformers';
+import { ApiResponse } from '@/types';
+import { asyncHandler } from '@/utils/asyncHandler';
+import { jsonResponse, notFoundResponse } from '@/utils/jsonResponse';
+import { logger } from '@/utils/logger';
+
+import { DTO, IdParams, idSchema } from '@shared/dto';
+
+class EntityController {
+    private logger = logger.child({
+        module: '[App][EntityController]',
+    });
+
+    public getAll = asyncHandler<unknown, QueryDTO, unknown, EntityDto[]>({
+        querySchema: QueryDTO,
+        logger: this.logger,
+        handler: async (request, reply): Promise<ApiResponse<EntityDto[] | void> | void> => {
+            const { page = 1, limit = 10, search } = request.query;
+            const skip = (Number(page) - 1) * Number(limit);
+
+            const filters = { search };
+            const result = await repository.findAll(filters, skip, Number(limit));
+            const entities = result.data.map((entity) => transformer.toDto(entity));
+
+            return jsonResponse(reply, 'Entities fetched successfully', entities, 200, result.pagination);
+        },
+    });
+
+    public getById = asyncHandler<unknown, unknown, IdParams, EntityDto>({
+        paramsSchema: idSchema,
+        logger: this.logger,
+        handler: async (request, reply): Promise<ApiResponse<EntityDto | void> | void> => {
+            const { id } = request.params;
+            const entity = await repository.findById(id);
+
+            if (!entity) {
+                return notFoundResponse(reply, 'Entity not found');
+            }
+
+            const entityDto = transformer.toDto(entity);
+            return jsonResponse(reply, 'Entity fetched successfully', entityDto, 200);
+        },
+    });
+}
+
+export const entityController = new EntityController();
+```
+
+## Conventions Obligatoires
+
+### Structure de classe
+- **Toujours** utiliser une classe avec des méthodes publiques
+- Export d'une instance unique en bas du fichier
+- Logger avec module spécifique dans le constructeur
+
+### AsyncHandler
+- **Obligatoire** pour toutes les méthodes de controller
+- Spécifier les types génériques : `<TBody, TQuery, TParams, TResponse>`
+- Toujours inclure le logger spécifique
+- Validation automatique des schemas Zod
+
+### Gestion des erreurs
+- Utiliser les helpers de `jsonResponse` :
+  - `jsonResponse()` pour les succès
+  - `notFoundResponse()` pour les 404
+  - `badRequestResponse()` pour les 400
+  - `unauthorizedResponse()` pour les 401
+  - etc.
+
+### Pagination
+- Pattern standard pour `getAll` :
+  ```typescript
+  const { page = 1, limit = 10, search } = request.query;
+  const skip = (Number(page) - 1) * Number(limit);
+  ```
+
+### Transformation des données
+- **Toujours** utiliser les transformers pour convertir les entités en DTOs
+- Ne jamais retourner d'entités Prisma directement
+
+### Nommage
+- Fichiers : `userController.ts`, `postController.ts`
+- Classes : `UserController`, `PostController`
+- Instances : `userController`, `postController`
+- Méthodes : `getAll`, `getById`, `create`, `update`, `delete`
+
+## Exemple Complet CRUD
+
+```typescript
+class UserController {
+    private logger = logger.child({
+        module: '[App][UserController]',
+    });
+
+    public getAllUsers = asyncHandler<unknown, GetAllUsers, unknown, UserDto[]>({
+        querySchema: GetAllUsers,
+        logger: this.logger,
+        handler: async (request, reply): Promise<ApiResponse<UserDto[] | void> | void> => {
+            const { page = 1, limit = 10, search } = request.query;
+            const skip = (Number(page) - 1) * Number(limit);
+
+            const filters = { search };
+            const result = await userRepository.findAll(filters, skip, Number(limit));
+            const users = result.data.map((user) => userTransformer.toUserDto(user));
+
+            return jsonResponse(reply, 'Users fetched successfully', users, 200, result.pagination);
+        },
+    });
+
+    public getUserById = asyncHandler<unknown, unknown, IdParams, UserDto>({
+        paramsSchema: idSchema,
+        logger: this.logger,
+        handler: async (request, reply): Promise<ApiResponse<UserDto | void> | void> => {
+            const { id } = request.params;
+            const user = await userRepository.findById(id);
+
+            if (!user) {
+                return notFoundResponse(reply, 'User not found');
+            }
+
+            const userDto = userTransformer.toUserDto(user);
+            return jsonResponse(reply, 'User fetched successfully', userDto, 200);
+        },
+    });
+
+    public createUser = asyncHandler<CreateUser, unknown, unknown, UserDto>({
+        bodySchema: CreateUser,
+        logger: this.logger,
+        handler: async (request, reply): Promise<ApiResponse<UserDto | void> | void> => {
+            // Vérifier si l'email existe déjà
+            const existingUser = await userRepository.findByEmail(request.body.email);
+            if (existingUser) {
+                return badRequestResponse(reply, 'Email already exists');
+            }
+
+            const user = await userRepository.create(request.body);
+            const userDto = userTransformer.toUserDto(user);
+
+            return jsonResponse(reply, 'User created successfully', userDto, 201);
+        },
+    });
+
+    public updateUser = asyncHandler<UpdateUser, unknown, IdParams, UserDto>({
+        bodySchema: UpdateUser,
+        paramsSchema: idSchema,
+        logger: this.logger,
+        handler: async (request, reply): Promise<ApiResponse<UserDto | void> | void> => {
+            const { id } = request.params;
+            const userExists = await userRepository.findById(id);
+
+            if (!userExists) {
+                return notFoundResponse(reply, 'User not found');
+            }
+
+            const user = await userRepository.update(id, request.body);
+            const userDto = userTransformer.toUserDto(user);
+
+            return jsonResponse(reply, 'User updated successfully', userDto, 200);
+        },
+    });
+
+    public deleteUser = asyncHandler<unknown, unknown, IdParams>({
+        paramsSchema: idSchema,
+        logger: this.logger,
+        handler: async (request, reply): Promise<ApiResponse<void> | void> => {
+            const { id } = request.params;
+            const userExists = await userRepository.findById(id);
+
+            if (!userExists) {
+                return notFoundResponse(reply, 'User not found');
+            }
+
+            await userRepository.delete(id);
+            return jsonResponse(reply, 'User deleted successfully', undefined, 204);
+        },
+    });
+}
+
+export const userController = new UserController();
+```
+
+

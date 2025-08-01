@@ -1,0 +1,264 @@
+---
+description: Rules for prisma backend.
+globs: 
+alwaysApply: false
+---
+# Règles pour Prisma
+
+## Structure et Organisation
+
+Le projet utilise Prisma avec une **architecture de schema modulaire** où chaque modèle est dans un fichier séparé.
+
+### Structure des dossiers
+```
+backend/prisma/
+├── schema/
+│   ├── schema.prisma      # Configuration principale
+│   ├── user.prisma        # Modèle User
+│   ├── post.prisma        # Modèle Post  
+│   ├── token.prisma       # Modèle Token
+│   └── [entity].prisma    # Autres modèles
+├── migrations/            # Migrations auto-générées
+└── seed.ts               # Script de peuplement
+```
+
+## Configuration Principale
+
+Le fichier `schema/schema.prisma` contient uniquement la configuration :
+
+```prisma
+generator client {
+  provider        = "prisma-client-js"
+  previewFeatures = ["prismaSchemaFolder"]
+  output          = "../../src/config/client"
+}
+
+datasource db {
+  provider = "mysql"
+  url      = env("DATABASE_URL")
+}
+```
+
+### Conventions de configuration
+- **Client généré** dans `src/config/client` pour être accessible via `@/config/client`
+- **Preview feature** `prismaSchemaFolder` pour la structure modulaire
+- **Provider MySQL** par défaut
+- **URL de connexion** via variable d'environnement
+
+## Modèles de Données
+
+### Structure Standard des Modèles
+
+Chaque modèle suit cette structure dans son fichier dédié :
+
+```prisma
+model Entity {
+  // Identifiant unique
+  id        String    @id @default(uuid())
+  
+  // Champs métier
+  name      String
+  email     String    @unique
+  status    String    @default("active")
+  
+  // Champs JSON pour structures complexes
+  roles     Json      @default("[\"ROLE_USER\"]")
+  metadata  Json?
+  
+  // Relations
+  authorId  String
+  author    User      @relation(fields: [authorId], references: [id])
+  posts     Post[]
+  
+  // Timestamps obligatoires
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime? // Pour soft delete
+}
+```
+
+### Conventions Obligatoires
+
+#### Identifiants
+- **Toujours** utiliser `String @id @default(uuid())`
+- Nommage des IDs de relation : `entityId` (ex: `authorId`, `userId`)
+
+#### Timestamps
+- **Obligatoires** sur tous les modèles :
+  - `createdAt DateTime @default(now())`
+  - `updatedAt DateTime @updatedAt`
+  - `deletedAt DateTime?` pour le soft delete
+
+#### Relations
+- **Foreign Keys explicites** : définir `entityId` puis la relation
+- **Nommage cohérent** : singulier pour many-to-one, pluriel pour one-to-many
+- **Contraintes de référence** : toujours spécifier `fields` et `references`
+
+#### Types de données
+- **String** pour les textes (pas de VARCHAR avec taille)
+- **Json** pour les structures complexes (rôles, métadata)
+- **Boolean** pour les flags
+- **DateTime** pour les dates
+- **Optionnel** avec `?` quand approprié
+
+### Exemple Concret
+
+```prisma
+// schema/user.prisma
+model User {
+  id               String    @id @default(uuid())
+  email            String    @unique
+  password         String
+  firstName        String
+  lastName         String
+  phone            String
+  civility         String
+  birthDate        String
+  acceptNewsletter Boolean
+  roles            Json      @default("[\"ROLE_USER\"]")
+  
+  // Relations
+  tokens           Token[]
+  posts            Post[]
+  
+  // Timestamps
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
+  deletedAt        DateTime?
+}
+
+// schema/post.prisma
+model Post {
+  id        String    @id @default(uuid())
+  title     String
+  content   String
+  
+  // Relation vers User
+  authorId  String
+  author    User      @relation(fields: [authorId], references: [id])
+  
+  // Timestamps
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime?
+}
+```
+
+## Seeds et Données de Test
+
+### Structure du fichier seed.ts
+
+```typescript
+import bcrypt from 'bcryptjs';
+import { PrismaClient } from '../src/config/client';
+import { fakerUser, users } from '../src/fixtures';
+
+const prisma = new PrismaClient();
+
+async function cleanDatabase() {
+    // Ordre de suppression important (relations)
+    await prisma.token.deleteMany();
+    await prisma.post.deleteMany();
+    await prisma.user.deleteMany();
+}
+
+async function main() {
+    await cleanDatabase();
+
+    // Créer les données fixes d'abord
+    for (const user of users) {
+        await prisma.user.create({
+            data: {
+                ...user,
+                password: await bcrypt.hash(user.password, 10),
+            },
+        });
+    }
+
+    // Puis les données aléatoires
+    for (let i = 0; i < 10; i++) {
+        const fakeUser = fakerUser();
+        await prisma.user.create({
+            data: {
+                ...fakeUser,
+                password: await bcrypt.hash(fakeUser.password, 10),
+            },
+        });
+    }
+}
+
+main()
+    .catch(console.error)
+    .finally(async () => {
+        await prisma.$disconnect();
+    });
+```
+
+### Conventions pour les Seeds
+- **Toujours** nettoyer avant de créer (`cleanDatabase()`)
+- **Respecter l'ordre** des relations dans les suppressions
+- **Utiliser les fixtures** du dossier `src/fixtures`
+- **Hasher les mots de passe** avec bcrypt
+- **Déconnecter Prisma** dans le `finally`
+
+## Migrations
+
+### Commandes Standard
+```bash
+# Créer et appliquer migration
+npx prisma migrate dev --name description_migration
+
+# Appliquer en production
+npx prisma migrate deploy
+
+# Reset complet (dev seulement)
+npx prisma migrate reset
+
+# Générer le client
+npx prisma generate
+```
+
+### Conventions de nommage
+- Descriptions claires : `add_user_posts_relation`, `create_token_table`
+- Pas de caractères spéciaux dans les noms
+- Utiliser l'anglais pour les descriptions
+
+## Client Prisma
+
+### Utilisation dans le code
+```typescript
+// Import du client généré
+import { PrismaClient, User, Post } from '@/config/client';
+import prisma from '@/config/prisma';
+
+// Types avec relations
+import { UserWithRelations } from '@/types';
+```
+
+### Configuration du client
+- **Instance unique** exportée depuis `@/config/prisma`
+- **Types générés** importables depuis `@/config/client`
+- **Types avec relations** définis dans `@/types`
+
+## Bonnes Pratiques
+
+### Performance
+- **Toujours** utiliser `include` pour éviter les N+1 queries
+- **Paginer** les résultats avec `skip` et `take`
+- **Indexer** les champs utilisés dans les `where`
+
+### Sécurité
+- **Jamais** exposer les entités Prisma directement (utiliser des transformers)
+- **Valider** les données avant insertion
+- **Utiliser** le soft delete avec `deletedAt`
+
+### Maintenance
+- **Documenter** les modèles complexes avec des commentaires
+- **Tester** les migrations sur des copies de données
+- **Backup** avant les migrations en production
+
+### Schema Modulaire
+- **Un fichier par modèle** dans `schema/`
+- **Noms cohérents** : `user.prisma`, `post.prisma`
+- **Regrouper** les modèles liés si nécessaire
+

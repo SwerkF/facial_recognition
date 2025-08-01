@@ -1,0 +1,23 @@
+{
+  "semi": true,
+  "tabWidth": 4,
+  "printWidth": 100,
+  "singleQuote": true,
+  "trailingComma": "es5",
+  "bracketSpacing": true,
+  "endOfLine": "lf",
+  "plugins": ["@trivago/prettier-plugin-sort-imports"],
+  "importOrder": [
+      "^react",
+      "^@?\\w",
+      "^lucide-react",
+      "^@/components/(.*)$",
+      "^@/features/(.*)$",
+      "^@/lib/(.*)$",
+      "^@/stores/(.*)$",
+      "^@/mocks/(.*)$",
+      "^[./]"
+  ],
+  "importOrderSeparation": true,
+  "importOrderSortSpecifiers": true
+}

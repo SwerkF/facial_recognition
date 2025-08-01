@@ -1,0 +1,73 @@
+---
+description: Rules for backend routes.
+globs: 
+alwaysApply: false
+---
+# Règles pour les Routes Fastify
+
+## Structure et Organisation
+
+Les routes Fastify doivent suivre cette structure :
+
+```typescript
+import { controller } from '@/controllers/controller';
+import { verifyAccess } from '@/middleware';
+import { isAuthenticated } from '@/middleware/auth';
+import { createSwaggerSchema } from '@/utils/swaggerUtils';
+import { DTOSchema, UserRole } from '@shared/dto';
+import { FastifyInstance } from 'fastify';
+
+export async function routes(fastify: FastifyInstance) {
+    // Route avec documentation Swagger
+    fastify.get('/', {
+        schema: createSwaggerSchema(
+            'Description de la route',
+            [
+                { message: 'Succès', data: [], status: 200 },
+                { message: 'Non autorisé', data: [], status: 401 },
+                { message: 'Erreur serveur', data: [], status: 500 },
+            ],
+            bodySchema, // ou null
+            true, // si authentification requise
+            querySchema, // ou null
+            ['Tag']
+        ),
+        preHandler: [isAuthenticated, verifyAccess(UserRole.ADMIN)],
+        handler: controller.method,
+    });
+}
+```
+
+## Conventions
+
+### Nommage des fichiers
+- `userRoutes.ts`, `postRoutes.ts`, etc.
+- Export de fonction async nommée selon la ressource
+
+### Documentation Swagger
+- **Toujours** utiliser `createSwaggerSchema`
+- Décrire tous les codes de statut possibles
+- Spécifier les schemas de body/query si nécessaires
+- Grouper avec des tags appropriés
+
+### Middleware
+- `isAuthenticated` pour vérifier le token JWT
+- `verifyAccess(UserRole.X)` pour les permissions
+- L'ordre est important : auth puis accès
+
+### Gestion des erreurs dans responses
+```typescript
+// Réponses standard à documenter
+{ message: 'Succès', data: [], status: 200 }
+{ message: 'Non autorisé', data: [], status: 401 }
+{ message: 'Interdit', data: [], status: 403 }
+{ message: 'Non trouvé', data: [], status: 404 }
+{ message: 'Erreur serveur', data: [], status: 500 }
+```
+
+### Schemas
+- Utiliser les DTOs de `@shared/dto` pour body/query
+- `bodySchema` pour POST/PATCH/PUT
+- `querySchema` pour les paramètres de requête (pagination, filtres)
+- `null` si pas de validation nécessaire
+
