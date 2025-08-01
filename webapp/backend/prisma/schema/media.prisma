@@ -8,7 +8,6 @@ model Media {
   type           MediaType @default(PNG)
   createdAt     DateTime  @default(now()) @map("created_at")
 
-  faceVerifications FaceVerification[] @relation("referenceImage")
   uploadedFaceVerifications FaceVerification[] @relation("uploadedImage")
 
   @@map("medias")

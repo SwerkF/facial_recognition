@@ -4,7 +4,7 @@ import type { ApiResponse } from '@/types';
 import type { FaceVerificationDto, FaceVerificationQueryDto } from '@shared/dto/faceVerificationDto';
 
 export interface CreateFaceVerificationRequest {
-    referenceImage: File;
+    referenceImage?: File;
     uploadedImage: File;
 }
 
@@ -12,15 +12,20 @@ class FaceVerificationService {
     private apiUrl = '/api/face-verifications';
 
     /**
-     * Crée une nouvelle vérification faciale avec deux images
-     * @param request - Les deux images (référence et upload)
-     * @returns Promise<ApiResponse<FaceVerificationDto>>
+     * Crée une nouvelle vérification faciale 
+     * @param request - L'image à analyser et optionnellement une image de référence
+     * @returns Promise<ApiResponse<FaceVerificationPDto>>
      */
     public async createFaceVerification(
         request: CreateFaceVerificationRequest
     ): Promise<ApiResponse<FaceVerificationDto>> {
         const formData = new FormData();
-        formData.append('referenceImage', request.referenceImage);
+        
+        // Ajouter l'image de référence seulement si elle existe
+        if (request.referenceImage) {
+            formData.append('referenceImage', request.referenceImage);
+        }
+        
         formData.append('uploadedImage', request.uploadedImage);
 
         return api.fetchMultipartRequest(this.apiUrl, 'POST', formData, false);

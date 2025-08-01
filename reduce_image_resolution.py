@@ -54,7 +54,7 @@ def process_images():
             output_path = os.path.join(test_dir, f"{condition}_{filename}")
             cv2.imwrite(output_path, img)
         
-        print(f"Oliwer: {len(train_images)} train, {len(test_images)} test")
+        print(f"Damien: {len(train_images)} train, {len(test_images)} test")
     
     if damien_images:
         random.shuffle(damien_images)

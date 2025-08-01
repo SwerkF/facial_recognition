@@ -1,8 +1,7 @@
 import React, { useState, useRef, useCallback, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Camera, Upload, CheckCircle, XCircle, RotateCcw, ArrowLeft, User, AlertCircle } from 'lucide-react';
+import { Camera, CheckCircle, XCircle, RotateCcw, User, AlertCircle, Upload, Image as ImageIcon } from 'lucide-react';
 import { Button } from '../../components/ui/Button/Button';
-import { FileUpload } from '../../components/ui/FileUpload/FileUpload';
 import { useCreateFaceVerification } from '../../api/queries/faceVerificationQueries';
 import { cameraService } from '@/services/cameraService';
 
@@ -11,53 +10,39 @@ interface VerificationResult {
   success: boolean;
   message: string;
   processingTime?: number;
+  confidence?: number;
+  percentage?: string;
 }
 
-// État de l'application
-type Step = 'upload' | 'verification';
+type AnalysisMode = 'camera' | 'upload';
 
 const FaceVerification: React.FC = () => {
   // États
-  const [currentStep, setCurrentStep] = useState<Step>('upload');
-  const [uploadedImage, setUploadedImage] = useState<File | null>(null);
-  const [imagePreview, setImagePreview] = useState<string | null>(null);
+  const [mode, setMode] = useState<AnalysisMode>('camera');
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [verificationResult, setVerificationResult] = useState<VerificationResult | null>(null);
   const [analysisProgress, setAnalysisProgress] = useState(0);
   const [capturedImage, setCapturedImage] = useState<File | null>(null);
+  const [uploadedImage, setUploadedImage] = useState<File | null>(null);
   const [countdown, setCountdown] = useState<number | null>(null);
   const [isCountdownActive, setIsCountdownActive] = useState(false);
   const [isCameraReady, setIsCameraReady] = useState(false);
   const [cameraError, setCameraError] = useState<string | null>(null);
+  const [isStarted, setIsStarted] = useState(false);
   
   // Refs
   const videoRef = useRef<HTMLVideoElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
   const hasTriggeredCaptureRef = useRef(false);
 
   // React Query hook
   const { mutateAsync: createFaceVerification } = useCreateFaceVerification();
 
-  // Gestion de l'upload d'image
-  const handleImageUpload = useCallback((file: File | null) => {
-    setUploadedImage(file);
-    
-    if (file) {
-      const reader = new FileReader();
-      reader.onload = (e) => {
-        setImagePreview(e.target?.result as string);
-      };
-      reader.readAsDataURL(file);
-    } else {
-      setImagePreview(null);
-    }
-  }, []);
-
   // Démarrer la caméra
   const startCamera = useCallback(async () => {
     console.log('🔍 Vérification de la référence vidéo...', { 
-      videoRef: !!videoRef.current, 
-      currentStep 
+      videoRef: !!videoRef.current
     });
     
     if (!videoRef.current) {
@@ -82,7 +67,7 @@ const FaceVerification: React.FC = () => {
       setCameraError(errorMessage);
       setIsCameraReady(false);
     }
-  }, [currentStep]);
+  }, []);
 
   // Arrêter la caméra
   const stopCamera = useCallback(() => {
@@ -91,20 +76,59 @@ const FaceVerification: React.FC = () => {
 
   // Commencer l'analyse
   const handleStartAnalysis = useCallback(() => {
-    console.log('🎯 Début analyse avec image:', { 
-      hasImage: !!uploadedImage, 
-      name: uploadedImage?.name 
-    });
-    
-    if (!uploadedImage) {
-      console.error('❌ Pas d\'image uploadée');
-      return;
-    }
-    
-    setCurrentStep('verification');
+    console.log('🎯 Début de l\'identification de Damien');
+    setIsStarted(true);
     hasTriggeredCaptureRef.current = false;
-    // La caméra sera démarrée par l'useEffect ci-dessous
-  }, [uploadedImage]);
+    
+    if (mode === 'upload') {
+      // En mode upload, ouvrir directement le sélecteur de fichier
+      setTimeout(() => {
+        fileInputRef.current?.click();
+      }, 100);
+    }
+    // En mode caméra, la caméra sera démarrée par l'useEffect ci-dessous
+  }, [mode]);
+
+  // Gérer la sélection de fichier
+  const handleFileSelect = useCallback((event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (file) {
+      // Vérifier le type de fichier
+      const allowedTypes = ['image/jpeg', 'image/jpg', 'image/png', 'image/webp'];
+      if (!allowedTypes.includes(file.type)) {
+        setVerificationResult({
+          success: false,
+          message: 'Format de fichier non supporté. Utilisez JPG, PNG ou WebP.',
+          processingTime: 0
+        });
+        return;
+      }
+
+      // Vérifier la taille (max 10MB)
+      if (file.size > 10 * 1024 * 1024) {
+        setVerificationResult({
+          success: false,
+          message: 'Fichier trop volumineux. Maximum 10MB.',
+          processingTime: 0
+        });
+        return;
+      }
+
+      setUploadedImage(file);
+      setIsAnalyzing(true);
+      setAnalysisProgress(10);
+      
+      // Démarrer l'analyse avec un petit délai pour l'effet visuel
+      setTimeout(() => {
+        performAnalysis(file);
+      }, 500);
+    }
+  }, []);
+
+  // Gérer le déclenchement de l'upload
+  const handleUploadClick = useCallback(() => {
+    fileInputRef.current?.click();
+  }, []);
 
   // Helper pour créer un résultat d'erreur
   const createErrorResult = useCallback((message: string): VerificationResult => ({
@@ -115,11 +139,7 @@ const FaceVerification: React.FC = () => {
 
   // Démarrer le compte à rebours et capturer l'image
   const startCountdown = useCallback(async () => {
-    console.log('⏰ Début countdown avec image uploadée:', {
-      hasUploadedImage: !!uploadedImage,
-      hasVideo: !!videoRef.current,
-      hasCanvas: !!canvasRef.current
-    });
+    console.log('⏰ Début countdown');
     
     // Vérifier les références nécessaires
     if (!videoRef.current || !canvasRef.current) {
@@ -160,26 +180,15 @@ const FaceVerification: React.FC = () => {
     } catch (error) {
       setVerificationResult(createErrorResult('Erreur lors de la capture'));
     }
-  }, [createErrorResult, uploadedImage]);
+  }, [createErrorResult]);
 
   // Analyse après la photo
   const performAnalysis = useCallback(async (capturedImageFile: File) => {
-    console.log('🔍 État uploadedImage:', { 
-      uploadedImage: !!uploadedImage, 
-      name: uploadedImage?.name, 
-      size: uploadedImage?.size 
-    });
-    
-    if (!uploadedImage) {
-      console.error('❌ Aucune image de référence disponible');
-      setVerificationResult(createErrorResult('Aucune image de référence disponible'));
-      return;
-    }
+    console.log('🔍 Analyse pour identifier Damien');
 
     try {
-      // Préparer la requête avec les deux images
+      // Préparer la requête avec seulement l'image capturée
       const request = {
-        referenceImage: uploadedImage,
         uploadedImage: capturedImageFile
       };
       
@@ -197,44 +206,49 @@ const FaceVerification: React.FC = () => {
       // Convertir le résultat de l'API au format attendu par l'UI
       const uiResult: VerificationResult = {
         success: result.result === 'success',
-        message: result.result === 'success' ? 'Identité vérifiée' : 'Échec de la vérification',
-        processingTime: Number(result.duration.toFixed(2))
+        message: result.result === 'success' ? 'C\'est bien Damien ! 🎉' : 'Ce n\'est pas Damien 🚫',
+        processingTime: Number(result.duration.toFixed(2)),
+        confidence: result.confidence,
+        percentage: `${(result.confidence * 100).toFixed(1)}%`
       };
 
       // Afficher le résultat
       setVerificationResult(uiResult);
 
     } catch (error) {
-      console.error('Erreur lors de la vérification:', error);
-      setVerificationResult(createErrorResult('Erreur lors de la vérification'));
+      console.error('Erreur lors de l\'identification:', error);
+      setVerificationResult(createErrorResult('Erreur lors de l\'identification'));
     } finally {
       // Nettoyer l'état d'analyse
       setIsAnalyzing(false);
       setAnalysisProgress(0);
     }
-  }, [uploadedImage, createFaceVerification, createErrorResult]);
+  }, [createFaceVerification, createErrorResult]);
 
   // Retour à l'accueil
   const handleReset = useCallback(() => {
     stopCamera();
-    setCurrentStep('upload');
-    setUploadedImage(null);
-    setImagePreview(null);
+    setIsStarted(false);
     setVerificationResult(null);
     setIsAnalyzing(false);
     setAnalysisProgress(0);
     setCapturedImage(null);
+    setUploadedImage(null);
     setCountdown(null);
     setIsCountdownActive(false);
     setIsCameraReady(false);
     setCameraError(null);
     hasTriggeredCaptureRef.current = false;
+    // Reset du file input
+    if (fileInputRef.current) {
+      fileInputRef.current.value = '';
+    }
   }, [stopCamera]);
 
-  // Démarrage de la caméra quand on arrive sur l'étape verification
+  // Démarrage de la caméra quand on commence (seulement en mode caméra)
   useEffect(() => {
-    if (currentStep === 'verification' && !isCameraReady && !cameraError) {
-      console.log('🎯 Étape verification atteinte, attente de l\'élément vidéo...');
+    if (isStarted && mode === 'camera' && !isCameraReady && !cameraError) {
+      console.log('🎯 Démarrage de l\'identification, attente de l\'élément vidéo...');
       
       // Vérifier plusieurs fois que l'élément vidéo est disponible
       let attempts = 0;
@@ -261,15 +275,12 @@ const FaceVerification: React.FC = () => {
       
       return () => clearTimeout(timer);
     }
-  }, [currentStep, isCameraReady, cameraError, startCamera]);
+  }, [isStarted, mode, isCameraReady, cameraError, startCamera]);
 
   // Auto-démarrage du compte à rebours (une seule fois)
   useEffect(() => {
-    if (currentStep === 'verification' && isCameraReady && !isAnalyzing && !verificationResult && !isCountdownActive && !hasTriggeredCaptureRef.current) {
-      console.log('🚀 Prêt à démarrer countdown - Image uploadée:', {
-        hasImage: !!uploadedImage,
-        name: uploadedImage?.name
-      });
+    if (isStarted && isCameraReady && !isAnalyzing && !verificationResult && !isCountdownActive && !hasTriggeredCaptureRef.current) {
+      console.log('🚀 Prêt à démarrer countdown');
       
       const timer = setTimeout(() => {
         hasTriggeredCaptureRef.current = true;
@@ -278,7 +289,7 @@ const FaceVerification: React.FC = () => {
       
       return () => clearTimeout(timer);
     }
-  }, [currentStep, isCameraReady, isAnalyzing, verificationResult, isCountdownActive, startCountdown, uploadedImage]);
+  }, [isStarted, isCameraReady, isAnalyzing, verificationResult, isCountdownActive, startCountdown]);
 
   // Nettoyage
   useEffect(() => {
@@ -309,9 +320,9 @@ const FaceVerification: React.FC = () => {
       </div>
 
       <AnimatePresence mode="wait">
-        {currentStep === 'upload' && (
+        {!isStarted && (
           <motion.div
-            key="upload"
+            key="welcome"
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, y: -20 }}
@@ -337,16 +348,54 @@ const FaceVerification: React.FC = () => {
 
                 {/* Titre principal */}
                 <h1 className="text-5xl font-bold text-white mb-4 tracking-tight">
-                  Face Recognition
+                  Identification Damien
                 </h1>
                 
                 {/* Sous-titre */}
                 <p className="text-xl text-gray-400 max-w-lg mx-auto font-light">
-                  Téléchargez votre photo pour commencer l'analyse
+                  {mode === 'camera' 
+                    ? 'Prenez une photo pour vérifier si vous êtes Damien'
+                    : 'Uploadez une photo pour vérifier si c\'est Damien'
+                  }
                 </p>
               </motion.div>
 
-              {/* Section d'upload principale */}
+              {/* Sélecteur de mode */}
+              <motion.div
+                className="flex justify-center mb-8"
+                initial={{ opacity: 0, y: 20 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ delay: 0.3, duration: 0.6 }}
+              >
+                <div className="bg-gray-900/60 border border-gray-700/50 rounded-2xl p-2 backdrop-blur-xl">
+                  <div className="flex space-x-2">
+                    <button
+                      onClick={() => setMode('camera')}
+                      className={`flex items-center space-x-2 px-6 py-3 rounded-xl transition-all duration-300 ${
+                        mode === 'camera'
+                          ? 'bg-gradient-to-br from-[#ac1ed6] to-[#c26e73] text-white shadow-lg'
+                          : 'text-gray-400 hover:text-white hover:bg-gray-700/50'
+                      }`}
+                    >
+                      <Camera className="h-5 w-5" />
+                      <span className="font-medium">Caméra</span>
+                    </button>
+                    <button
+                      onClick={() => setMode('upload')}
+                      className={`flex items-center space-x-2 px-6 py-3 rounded-xl transition-all duration-300 ${
+                        mode === 'upload'
+                          ? 'bg-gradient-to-br from-[#ac1ed6] to-[#c26e73] text-white shadow-lg'
+                          : 'text-gray-400 hover:text-white hover:bg-gray-700/50'
+                      }`}
+                    >
+                      <Upload className="h-5 w-5" />
+                      <span className="font-medium">Upload</span>
+                    </button>
+                  </div>
+                </div>
+              </motion.div>
+
+              {/* Section principale */}
               <motion.div
                 className="bg-gray-900/60 border border-gray-700/50 rounded-3xl shadow-2xl p-10 mb-10 backdrop-blur-xl relative overflow-hidden"
                 initial={{ opacity: 0, y: 40 }}
@@ -356,52 +405,27 @@ const FaceVerification: React.FC = () => {
                 {/* Effet de lueur subtile */}
                 <div className="absolute -top-px -left-px -right-px h-px bg-gradient-to-r from-transparent via-purple-400/50 to-transparent"></div>
                 
-                <div className="space-y-8">
-                  {!imagePreview ? (
-                    <FileUpload
-                      label="Sélectionnez votre photo"
-                      accept="image/*"
-                      maxSize={10}
-                      onFileChange={handleImageUpload}
-                      value={uploadedImage}
-                      modernStyle={true}
-                    />
-                  ) : (
-                    <div>
-                      <label className="mb-4 block text-xl font-semibold text-white text-center">
-                        Votre photo
-                      </label>
-                      <div className="relative max-w-md mx-auto">
-                        <div className="relative rounded-3xl overflow-hidden border border-purple-400/30 shadow-2xl bg-gray-900/50 backdrop-blur-sm">
-                          <img
-                            src={imagePreview}
-                            alt="Photo sélectionnée"
-                            className="w-full h-80 object-cover"
-                          />
-                          
-                          {/* Overlay subtil */}
-                          <div className="absolute inset-0 bg-gradient-to-t from-purple-900/20 via-transparent to-purple-900/20"></div>
-                          
-                          {/* Indicateur de succès */}
-                          <div className="absolute top-4 right-4 flex items-center space-x-2 bg-green-900/80 px-3 py-2 rounded-full border border-green-400/50 backdrop-blur-sm">
-                            <CheckCircle className="h-4 w-4 text-green-400" />
-                            <span className="text-green-400 text-xs font-medium">Photo prête</span>
-                          </div>
-
-                          {/* Bouton pour changer la photo */}
-                          <div className="absolute bottom-4 left-4">
-                            <button
-                              onClick={() => handleImageUpload(null)}
-                              className="flex items-center space-x-2 bg-gray-900/80 px-3 py-2 rounded-full border border-gray-600/50 backdrop-blur-sm hover:bg-gray-800/80 transition-colors text-gray-300 hover:text-white"
-                            >
-                              <Upload className="h-4 w-4" />
-                              <span className="text-xs font-medium">Changer</span>
-                            </button>
-                          </div>
-                        </div>
-                      </div>
+                <div className="text-center space-y-6">
+                  <div className="text-white">
+                    <h3 className="text-2xl font-semibold mb-4">Comment ça marche ?</h3>
+                    <div className="space-y-3 text-gray-300 text-lg">
+                      {mode === 'camera' ? (
+                        <>
+                          <p>1. Cliquez sur "Commencer l'identification"</p>
+                          <p>2. Positionnez-vous devant la caméra</p>
+                          <p>3. L'IA analysera votre visage</p>
+                          <p>4. Découvrez si vous êtes Damien ! 🤖</p>
+                        </>
+                      ) : (
+                        <>
+                          <p>1. Cliquez sur "Commencer l'identification"</p>
+                          <p>2. Sélectionnez une photo depuis votre appareil</p>
+                          <p>3. L'IA analysera le visage sur la photo</p>
+                          <p>4. Découvrez si c'est Damien ! 🤖</p>
+                        </>
+                      )}
                     </div>
-                  )}
+                  </div>
                 </div>
               </motion.div>
 
@@ -414,22 +438,30 @@ const FaceVerification: React.FC = () => {
               >
                 <Button
                   onClick={handleStartAnalysis}
-                  disabled={!uploadedImage}
                   variant="modern"
                   size="xl"
-                  className={`px-16 ${!uploadedImage ? 'opacity-50 cursor-not-allowed' : ''}`}
+                  className="px-16"
                 >
-                  <Camera className="mr-3 h-6 w-6" />
-                  Commencer l'analyse
+                  {mode === 'camera' ? (
+                    <>
+                      <Camera className="mr-3 h-6 w-6" />
+                      Commencer l'identification
+                    </>
+                  ) : (
+                    <>
+                      <Upload className="mr-3 h-6 w-6" />
+                      Sélectionner une photo
+                    </>
+                  )}
                 </Button>
               </motion.div>
             </div>
           </motion.div>
         )}
 
-        {currentStep === 'verification' && (
+        {isStarted && (
           <motion.div
-            key="verification"
+            key="identification"
             initial={{ opacity: 0, x: 20 }}
             animate={{ opacity: 1, x: 0 }}
             exit={{ opacity: 0, x: 20 }}
@@ -448,16 +480,16 @@ const FaceVerification: React.FC = () => {
                   onClick={handleReset}
                   className="flex items-center space-x-2 text-gray-400 hover:text-white transition-colors bg-gray-900/50 px-4 py-2 rounded-2xl border border-gray-600/30 backdrop-blur-sm hover:bg-gray-800/60"
                 >
-                  <ArrowLeft className="h-5 w-5" />
-                  <span>Retour</span>
+                  <RotateCcw className="h-5 w-5" />
+                  <span>Recommencer</span>
                 </button>
                 
                 <div className="text-center">
                   <h2 className="text-3xl font-bold text-white">
-                    {verificationResult ? 'Résultat' : 'Vérification faciale'}
+                    {verificationResult ? 'Résultat' : 'Identification en cours'}
                   </h2>
                   <p className="text-gray-400 mt-1">
-                    {verificationResult ? 'Vérification terminée' : 'Comparaison des images en cours...'}
+                    {verificationResult ? 'Identification terminée' : 'Analyse de votre visage...'}
                   </p>
                 </div>
                 
@@ -482,11 +514,17 @@ const FaceVerification: React.FC = () => {
                       className="bg-gray-900/60 border border-gray-700/50 rounded-3xl shadow-2xl p-8 backdrop-blur-xl"
                     >
                       <h3 className="text-xl font-semibold text-white mb-6 text-center">
-                        {cameraError ? 'Erreur de caméra' :
-                         !isCameraReady ? 'Démarrage de la caméra...' :
-                         isCountdownActive ? 'Préparez-vous !' : 
-                         capturedImage && isAnalyzing ? 'Photo capturée - Analyse en cours...' :
-                         isAnalyzing ? 'Analyse en cours...' : 'Caméra en direct'}
+                        {mode === 'upload' ? (
+                          uploadedImage && isAnalyzing ? 'Photo uploadée - Identification en cours...' :
+                          uploadedImage ? 'Photo uploadée' :
+                          isAnalyzing ? 'Identification en cours...' : 'Sélectionnez une photo'
+                        ) : (
+                          cameraError ? 'Erreur de caméra' :
+                          !isCameraReady ? 'Démarrage de la caméra...' :
+                          isCountdownActive ? 'Préparez-vous !' : 
+                          capturedImage && isAnalyzing ? 'Photo capturée - Identification en cours...' :
+                          isAnalyzing ? 'Identification en cours...' : 'Caméra en direct'
+                        )}
                       </h3>
                       
                       {cameraError && (
@@ -507,17 +545,43 @@ const FaceVerification: React.FC = () => {
                           </Button>
                         </div>
                       )}
+                      
                       <div className="relative rounded-2xl overflow-hidden bg-black border border-gray-600/50">
-                        <video
-                          ref={videoRef}
-                          autoPlay
-                          playsInline
-                          muted
-                          className="w-full h-80 object-cover"
-                        />
+                        {mode === 'camera' ? (
+                          <video
+                            ref={videoRef}
+                            autoPlay
+                            playsInline
+                            muted
+                            className="w-full h-80 object-cover"
+                          />
+                        ) : (
+                          <div className="w-full h-80 flex items-center justify-center bg-gray-800">
+                            {uploadedImage ? (
+                              <img
+                                src={URL.createObjectURL(uploadedImage)}
+                                alt="Image uploadée"
+                                className="w-full h-full object-cover"
+                              />
+                            ) : (
+                              <div className="text-center">
+                                <ImageIcon className="h-16 w-16 text-gray-400 mx-auto mb-4" />
+                                <p className="text-gray-400 mb-4">Aucune image sélectionnée</p>
+                                <Button
+                                  onClick={handleUploadClick}
+                                  variant="secondary"
+                                  size="sm"
+                                >
+                                  <Upload className="mr-2 h-4 w-4" />
+                                  Choisir une photo
+                                </Button>
+                              </div>
+                            )}
+                          </div>
+                        )}
                         
                         {/* Overlay de chargement de la caméra */}
-                        {!isCameraReady && !cameraError && (
+                        {mode === 'camera' && !isCameraReady && !cameraError && (
                           <div className="absolute inset-0 flex items-center justify-center bg-gray-900/80 backdrop-blur-sm">
                             <div className="text-center">
                               <div className="inline-flex items-center justify-center w-12 h-12 border-4 border-purple-400 border-t-transparent rounded-full animate-spin mb-4"></div>
@@ -531,29 +595,29 @@ const FaceVerification: React.FC = () => {
                           </div>
                         )}
                         
-                        {/* Overlay de compte à rebours */}
-                        {isCountdownActive && countdown && (
-                          <div className="absolute inset-0 flex items-center justify-center bg-black/70 backdrop-blur-sm">
-                            <motion.div
-                              key={countdown}
-                              initial={{ scale: 0.5, opacity: 0 }}
-                              animate={{ scale: 1, opacity: 1 }}
-                              exit={{ scale: 1.5, opacity: 0 }}
-                              transition={{ duration: 0.8, ease: "easeOut" }}
-                              className="flex flex-col items-center"
-                            >
-                              <div className="text-8xl font-bold text-white mb-4 drop-shadow-2xl">
+                        {/* Overlay de compte à rebours - coin supérieur droit */}
+                        {mode === 'camera' && isCountdownActive && countdown && (
+                          <motion.div
+                            key={countdown}
+                            initial={{ scale: 0.5, opacity: 0, x: 20, y: -20 }}
+                            animate={{ scale: 1, opacity: 1, x: 0, y: 0 }}
+                            exit={{ scale: 1.2, opacity: 0 }}
+                            transition={{ duration: 0.6, ease: "easeOut" }}
+                            className="absolute top-4 right-4 bg-black/80 backdrop-blur-sm rounded-2xl p-6 border border-purple-400/50"
+                          >
+                            <div className="flex flex-col items-center">
+                              <div className="text-4xl font-bold text-white mb-2 drop-shadow-2xl">
                                 {countdown}
                               </div>
-                              <div className="text-xl text-gray-300 font-medium">
-                                Regardez la caméra
+                              <div className="text-sm text-gray-300 font-medium text-center">
+                                Prêt !
                               </div>
-                            </motion.div>
-                          </div>
+                            </div>
+                          </motion.div>
                         )}
                         
                         {/* Flash de capture */}
-                        {capturedImage && !isAnalyzing && !verificationResult && isCountdownActive === false && countdown === null && (
+                        {mode === 'camera' && capturedImage && !isAnalyzing && !verificationResult && isCountdownActive === false && countdown === null && (
                           <motion.div
                             initial={{ opacity: 0 }}
                             animate={{ opacity: [0, 1, 0] }}
@@ -568,10 +632,16 @@ const FaceVerification: React.FC = () => {
                             <div className="text-center">
                               <div className="inline-flex items-center justify-center w-16 h-16 border-4 border-purple-400 border-t-transparent rounded-full animate-spin mb-4"></div>
                               <div className="text-white text-lg font-medium mb-2">
-                                {capturedImage ? 'Photo capturée ✓' : 'Analyse en cours...'}
+                                {mode === 'camera' 
+                                  ? (capturedImage ? 'Photo capturée ✓' : 'Identification en cours...') 
+                                  : (uploadedImage ? 'Photo uploadée ✓' : 'Identification en cours...')
+                                }
                               </div>
                               <div className="text-gray-300 text-sm">
-                                Vérification de l'identité en cours...
+                                {mode === 'camera' 
+                                  ? 'Vérification si vous êtes Damien...' 
+                                  : 'Vérification si c\'est Damien...'
+                                }
                               </div>
                               {analysisProgress > 0 && (
                                 <div className="mt-4 w-48 mx-auto">
@@ -637,14 +707,27 @@ const FaceVerification: React.FC = () => {
                           {verificationResult.message}
                         </h3>
                         
-                        {/* Métrique de temps uniquement */}
-                        <div className="max-w-sm mx-auto mb-10">
+                        {/* Métriques de temps et confiance */}
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-6 max-w-lg mx-auto mb-10">
                           <div className="bg-gray-800/50 p-6 rounded-2xl">
-                            <div className="text-gray-400 text-sm mb-2">Temps de traitement</div>
-                            <div className="text-white text-3xl font-bold">
+                            <div className="text-gray-400 text-sm mb-2">Temps d'identification</div>
+                            <div className="text-white text-2xl font-bold">
                               {verificationResult.processingTime}s
                             </div>
                           </div>
+                          
+                          {verificationResult.percentage && (
+                            <div className="bg-gray-800/50 p-6 rounded-2xl">
+                              <div className="text-gray-400 text-sm mb-2">
+                                {verificationResult.success ? 'Certitude Damien' : 'Certitude Non-Damien'}
+                              </div>
+                              <div className={`text-2xl font-bold ${
+                                verificationResult.success ? 'text-green-400' : 'text-red-400'
+                              }`}>
+                                {verificationResult.percentage}
+                              </div>
+                            </div>
+                          )}
                         </div>
                         
                         {/* Actions */}
@@ -655,7 +738,7 @@ const FaceVerification: React.FC = () => {
                           className="px-10"
                         >
                           <RotateCcw className="mr-3 h-5 w-5" />
-                          Nouvelle analyse
+                          Nouvelle identification
                         </Button>
                       </div>
                     </motion.div>
@@ -666,6 +749,15 @@ const FaceVerification: React.FC = () => {
 
             {/* Canvas caché */}
             <canvas ref={canvasRef} className="hidden" />
+            
+            {/* Input de fichier caché */}
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept="image/*"
+              onChange={handleFileSelect}
+              className="hidden"
+            />
           </motion.div>
         )}
       </AnimatePresence>
