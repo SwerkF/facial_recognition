@@ -1,5 +1,6 @@
 from flask import Flask, request, jsonify
 from flask_cors import CORS
+import cv2
 import numpy as np
 import os
 import tensorflow as tf
@@ -22,14 +23,11 @@ def load_model():
     else:
         print(f"Modèle non trouvé à {MODEL_PATH}")
 
-def preprocess_image_from_bytes(image_bytes):
+def preprocess_damien(image_bytes):
     """Préprocesse une image pour la prédiction (identique à l'entraînement)"""
     try:
         # Charger l'image depuis les bytes
         img = Image.open(io.BytesIO(image_bytes))
-        
-        # Redimensionner à 128x128 (target_size)
-        img = img.resize((128, 128))
         
         # Convertir en array
         img_array = tf.keras.preprocessing.image.img_to_array(img)
@@ -43,6 +41,33 @@ def preprocess_image_from_bytes(image_bytes):
         return img_array
     except Exception as e:
         print(f"Erreur preprocessing: {e}")
+        return None
+
+def preprocess_mohand(image_bytes):
+    """Préprocesse une image pour la prédiction (identique à l'entraînement)"""
+    try:
+        # Convertir bytes en array numpy pour cv2
+        file_bytes = np.asarray(bytearray(image_bytes), dtype=np.uint8)
+        
+        # Charger l'image en niveaux de gris (comme dans le notebook)
+        image = cv2.imdecode(file_bytes, cv2.IMREAD_GRAYSCALE)
+        
+        if image is None:
+            return None
+            
+        # Redimensionner à 100x100 (comme dans le notebook)
+        image = cv2.resize(image, (100, 100))
+        
+        # Normalisation
+        image = image.astype('float32') / 255.0
+        
+        # Ajouter les dimensions (canal et batch)
+        image = np.expand_dims(image, axis=-1)  # Canal
+        image = np.expand_dims(image, axis=0)   # Batch
+        
+        return image
+    except Exception as e:
+        print(f"Erreur preprocessing mohand: {e}")
         return None
 
 
@@ -72,7 +97,7 @@ def upload_image():
         
         # Préparation de l'image avec TensorFlow/Keras (identique à l'entraînement)
         file_content = file.read()
-        processed_image = preprocess_image_from_bytes(file_content)
+        processed_image = preprocess_damien(file_content)
         
         if processed_image is None:
             return jsonify({'error': 'Impossible de traiter l\'image'}), 400
@@ -84,7 +109,7 @@ def upload_image():
         # Interpréter le résultat
         if confidence > 0.5:
             result = {
-                'is_oliwer': True,
+                'is_damien': True,
                 'confidence': float(confidence),
                 'percentage': f"{confidence:.2%}",
                 'message': f"C'est Damien avec {confidence:.2%} de confiance"
@@ -92,7 +117,7 @@ def upload_image():
         else:
             non_confidence = 1 - confidence
             result = {
-                'is_oliwer': False,
+                'is_damien': False,
                 'confidence': float(non_confidence),
                 'percentage': f"{non_confidence:.2%}",
                 'message': f"Ce n'est pas Damien avec {non_confidence:.2%} de confiance"
