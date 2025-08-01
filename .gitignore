@@ -1,3 +1,14 @@
 .venv
 venv
 to_transform
+
+# Modèles trop volumineux
+models/
+*.h5
+*.keras
+*.pkl
+
+# Autres fichiers volumineux
+logs/
+binary_dataset/
+processed/
