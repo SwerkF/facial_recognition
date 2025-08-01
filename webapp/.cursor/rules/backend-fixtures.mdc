@@ -1,0 +1,209 @@
+---
+description: Rules for creating customs fixtures for the backend.
+globs: 
+alwaysApply: false
+---
+# Règles pour les Fixtures Backend
+
+## Structure et Organisation
+
+Les fixtures servent à créer des données de test et de développement. Elles doivent suivre cette structure :
+
+```typescript
+import { faker } from '@faker-js/faker';
+
+// Données fixes pour les tests
+export const users = [
+    {
+        id: 'd2c89e50-1b27-4b6a-b8a6-8a3b5f85df50',
+        email: 'admin@app.com',
+        password: 'adminPassword',
+        firstName: 'Admin',
+        lastName: 'User',
+        roles: "['ROLE_ADMIN']",
+        phone: faker.phone.number(),
+        civility: faker.helpers.arrayElement(['M', 'Mme']),
+        birthDate: faker.date.past().toISOString(),
+        acceptNewsletter: faker.datatype.boolean(),
+        createdAt: new Date('2023-01-01T10:00:00Z'),
+        updatedAt: new Date('2023-01-01T10:00:00Z'),
+    },
+    // ... autres utilisateurs prédéfinis
+];
+
+// Factory pour générer des données aléatoires
+export const fakerUser = () => {
+    return {
+        id: faker.string.uuid(),
+        email: faker.internet.email(),
+        password: 'userPassword',
+        firstName: faker.person.firstName(),
+        lastName: faker.person.lastName(),
+        phone: faker.phone.number(),
+        civility: faker.helpers.arrayElement(['M', 'Mme']),
+        birthDate: faker.date.past().toISOString(),
+        acceptNewsletter: faker.datatype.boolean(),
+        roles: "['ROLE_USER']",
+        createdAt: faker.date.recent(),
+        updatedAt: faker.date.recent(),
+    };
+};
+
+// Factory pour des relations
+export const fakerUserWithPosts = (postCount: number = 3) => {
+    const user = fakerUser();
+    return {
+        ...user,
+        posts: Array.from({ length: postCount }, () => fakerPost()),
+    };
+};
+```
+
+## Types de Fixtures
+
+### 1. Données Statiques
+Pour les utilisateurs/données critiques toujours identiques :
+
+```typescript
+export const adminUsers = [
+    {
+        id: 'admin-uuid-fixed',
+        email: 'admin@app.com',
+        password: 'adminPassword', // Sera hashé par le repository
+        firstName: 'Admin',
+        lastName: 'System',
+        roles: "['ROLE_ADMIN']",
+        createdAt: new Date('2023-01-01T10:00:00Z'),
+        updatedAt: new Date('2023-01-01T10:00:00Z'),
+    },
+];
+
+export const testUsers = [
+    {
+        id: 'test-user-1',
+        email: 'test1@app.com',
+        // ... données fixes pour les tests
+    },
+];
+```
+
+### 2. Factory Functions
+Pour générer des données aléatoires réutilisables :
+
+```typescript
+export const fakerUser = (overrides: Partial<User> = {}) => {
+    return {
+        id: faker.string.uuid(),
+        email: faker.internet.email(),
+        firstName: faker.person.firstName(),
+        lastName: faker.person.lastName(),
+        phone: faker.phone.number(),
+        roles: "['ROLE_USER']",
+        createdAt: faker.date.recent(),
+        updatedAt: faker.date.recent(),
+        ...overrides, // Permet de surcharger des champs
+    };
+};
+
+// Usage: fakerUser({ email: 'specific@email.com' })
+```
+
+### 3. Factories avec Relations
+Pour créer des données complexes avec relations :
+
+```typescript
+export const fakerUserWithPosts = (postCount: number = 3) => {
+    return {
+        ...fakerUser(),
+        posts: Array.from({ length: postCount }, () => ({
+            id: faker.string.uuid(),
+            title: faker.lorem.sentence(),
+            content: faker.lorem.paragraphs(3),
+            createdAt: faker.date.recent(),
+            updatedAt: faker.date.recent(),
+        })),
+    };
+};
+```
+
+## Conventions Obligatoires
+
+### Nommage des fichiers
+- `entityFixtures.ts` : `userFixtures.ts`, `postFixtures.ts`
+- Un fichier par entité principale
+- Index pour regrouper : `fixtures/index.ts`
+
+### Structure des exports
+- **Données statiques** : tableaux nommés au pluriel (`users`, `posts`)
+- **Factories** : fonctions préfixées `faker` (`fakerUser`, `fakerPost`)
+- **Relations** : suffixe `With` (`fakerUserWithPosts`)
+
+### Utilisation de Faker
+- **Toujours** utiliser `@faker-js/faker` pour les données aléatoires
+- Préférer les méthodes spécialisées : `faker.person.firstName()` vs `faker.name.firstName()`
+- Utiliser `faker.helpers.arrayElement()` pour les choix multiples
+
+### Gestion des IDs
+- **Fixtures statiques** : IDs fixes et explicites pour les tests
+- **Factories** : `faker.string.uuid()` pour des IDs uniques
+- Éviter les collisions entre fixtures statiques
+
+### Types et Validation
+- Les fixtures doivent correspondre aux types des entités
+- Respecter les contraintes de validation (email valide, etc.)
+- Inclure tous les champs obligatoires
+
+### Dates
+- **Fixtures statiques** : dates fixes pour la reproductibilité
+- **Factories** : `faker.date.recent()`, `faker.date.past()`, etc.
+- Format ISO string pour les dates : `.toISOString()`
+
+### Mots de passe
+- Utiliser des mots de passe en clair dans les fixtures
+- Ils seront hashés par les repositories/services
+- Mots de passe cohérents pour les tests
+
+### Relations
+- Gérer les relations via des factories spécialisées
+- Éviter les références circulaires
+- Permettre la surcharge des données de relation
+
+## Utilisation
+
+### Dans les tests
+```typescript
+import { users, fakerUser } from '@/fixtures/userFixtures';
+
+// Utiliser les données statiques
+const adminUser = users[0];
+
+// Générer des données aléatoires
+const randomUser = fakerUser();
+const userWithEmail = fakerUser({ email: 'test@example.com' });
+```
+
+### Dans les seeds de base de données
+```typescript
+import { users, fakerUser } from '@/fixtures/userFixtures';
+
+async function seedUsers() {
+    // Créer les utilisateurs admin
+    for (const user of users) {
+        await userRepository.create(user);
+    }
+    
+    // Créer des utilisateurs aléatoires
+    for (let i = 0; i < 10; i++) {
+        await userRepository.create(fakerUser());
+    }
+}
+```
+
+### Index pour faciliter les imports
+```typescript
+// fixtures/index.ts
+export * from './userFixtures';
+export * from './postFixtures';
+export * from './orderFixtures';
+```
+

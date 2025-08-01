@@ -1,0 +1,340 @@
+---
+description: Frontend global rules.
+globs: 
+alwaysApply: false
+---
+# Règles Frontend Global - React + TypeScript
+
+## Stack Technologique Frontend
+
+### Technologies Principales
+- **Framework**: React 18 avec TypeScript
+- **Build Tool**: Vite avec SWC
+- **Styling**: TailwindCSS + Framer Motion
+- **State Management**: Zustand
+- **API Layer**: TanStack Query (React Query)
+- **Forms**: React Hook Form + Zod validation
+- **Routing**: React Router DOM v6
+- **Testing**: Jest + Testing Library + jsdom
+- **Utilities**: class-variance-authority, clsx, tailwind-merge
+
+### Structure du Frontend
+```
+frontend/src/
+├── api/                 # Services et queries
+│   ├── queries/         # TanStack Query hooks
+│   ├── userService.ts   # Services API
+│   ├── authService.ts   
+│   └── interceptor.ts   # Axios interceptor
+├── components/          # Composants réutilisables
+│   ├── ui/              # Composants UI de base
+│   └── layout/          # Composants de layout
+├── features/            # Features organisées par domaine
+│   ├── auth/           # Login, Register
+│   ├── user/           # Profil utilisateur
+│   └── users/          # Liste utilisateurs
+├── stores/              # Stores Zustand
+├── lib/                 # Utilitaires (cn function)
+├── configs/             # Configuration (QueryClient)
+├── types/               # Types TypeScript
+├── routes/              # Configuration routing
+└── assets/              # Assets statiques
+```
+
+## Conventions Générales
+
+### Imports et Alias
+```typescript
+// Imports externes d'abord
+import { useState } from 'react';
+import { useQuery } from '@tanstack/react-query';
+import { motion } from 'framer-motion';
+
+// Imports internes avec alias @/
+import { Button } from '@/components/ui/Button/Button';
+import { useAuthStore } from '@/stores/authStore';
+
+// Imports shared (DTOs, types)
+import { UserDto, LoginDto } from '@shared/dto';
+```
+
+### Naming Conventions
+- **Composants**: PascalCase (Button.tsx)
+- **Hooks**: camelCase avec préfixe "use" (useGetUsers)
+- **Services**: camelCase avec suffixe "Service" (userService)
+- **Stores**: camelCase avec suffixe "Store" (authStore)
+- **Types**: PascalCase (UserDto, AuthState)
+
+### File Organization
+- Un composant par fichier
+- Dossier par composant UI avec tests
+- Barrel exports via index.ts
+- Tests à côté des composants (.spec.tsx)
+
+## Patterns React
+
+### Composants Fonctionnels
+```typescript
+import type React from 'react';
+
+interface ComponentProps {
+    title: string;
+    children: React.ReactNode;
+    variant?: 'primary' | 'secondary';
+    onClick?: () => void;
+}
+
+export const Component: React.FC<ComponentProps> = ({
+    title,
+    children,
+    variant = 'primary',
+    onClick,
+}) => {
+    return (
+        <div className={`component ${variant}`} onClick={onClick}>
+            <h2>{title}</h2>
+            {children}
+        </div>
+    );
+};
+```
+
+### Hooks Personnalisés
+```typescript
+import { useState, useEffect } from 'react';
+
+export const useCustomHook = (initialValue: string) => {
+    const [value, setValue] = useState(initialValue);
+    const [loading, setLoading] = useState(false);
+    
+    useEffect(() => {
+        // Effect logic
+    }, [value]);
+    
+    return {
+        value,
+        setValue,
+        loading,
+    };
+};
+```
+
+## Styling avec TailwindCSS
+
+### Conventions de Style
+- Utiliser `cn()` pour merger les classes Tailwind
+- Responsive design avec breakpoints Tailwind
+- Design system cohérent avec variants
+- Animations avec Framer Motion
+
+### Utilitaire cn()
+```typescript
+import { cn } from '@/lib/utils';
+
+const buttonVariants = {
+    primary: 'bg-blue-600 hover:bg-blue-700 text-white',
+    secondary: 'bg-gray-100 hover:bg-gray-200 text-gray-900',
+};
+
+export const Button = ({ variant = 'primary', className, ...props }) => {
+    return (
+        <button
+            className={cn(
+                'px-4 py-2 rounded-md font-medium transition-colors',
+                buttonVariants[variant],
+                className
+            )}
+            {...props}
+        />
+    );
+};
+```
+
+### Framer Motion Integration
+```typescript
+import { motion } from 'framer-motion';
+
+export const AnimatedComponent = () => {
+    return (
+        <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -20 }}
+            transition={{ duration: 0.3 }}
+            whileHover={{ scale: 1.02 }}
+            whileTap={{ scale: 0.98 }}
+        >
+            <h1>Animated Content</h1>
+        </motion.div>
+    );
+};
+```
+
+## TypeScript
+
+### Types et Interfaces
+```typescript
+// Props interfaces
+interface ButtonProps extends React.ButtonHTMLAttributes<HTMLButtonElement> {
+    variant?: 'primary' | 'secondary' | 'danger';
+    isLoading?: boolean;
+    children: React.ReactNode;
+}
+
+// State interfaces
+interface AuthState {
+    user: UserDto | null;
+    isAuthenticated: boolean;
+    accessToken: string | null;
+}
+
+// Utility types
+type Optional<T, K extends keyof T> = Omit<T, K> & Partial<Pick<T, K>>;
+```
+
+### Generic Types
+```typescript
+// Generic API response
+interface ApiResponse<T> {
+    data: T;
+    message: string;
+    success: boolean;
+}
+
+// Generic hook
+function useApiQuery<T>(queryFn: () => Promise<T>) {
+    return useQuery<T>({
+        queryFn,
+        // ...options
+    });
+}
+```
+
+## Gestion d'État
+
+### Zustand Store Pattern
+```typescript
+import { create } from 'zustand';
+
+interface StoreState {
+    // State
+    data: DataType[];
+    loading: boolean;
+    error: string | null;
+    
+    // Actions
+    fetchData: () => Promise<void>;
+    updateData: (id: string, data: Partial<DataType>) => void;
+    reset: () => void;
+}
+
+export const useStore = create<StoreState>((set, get) => ({
+    data: [],
+    loading: false,
+    error: null,
+    
+    fetchData: async () => {
+        set({ loading: true, error: null });
+        try {
+            const data = await api.fetchData();
+            set({ data, loading: false });
+        } catch (error) {
+            set({ error: error.message, loading: false });
+        }
+    },
+    
+    updateData: (id, updateData) => {
+        set(state => ({
+            data: state.data.map(item => 
+                item.id === id ? { ...item, ...updateData } : item
+            )
+        }));
+    },
+    
+    reset: () => set({ data: [], loading: false, error: null }),
+}));
+```
+
+## Routing
+
+### React Router Configuration
+```typescript
+import { createBrowserRouter, RouterProvider } from 'react-router-dom';
+
+const router = createBrowserRouter([
+    {
+        path: '/',
+        element: <Layout />,
+        children: [
+            {
+                index: true,
+                element: <HomePage />
+            },
+            {
+                path: 'users',
+                element: <UsersPage />
+            },
+            {
+                path: 'user/:id',
+                element: <UserDetailPage />
+            },
+        ],
+    },
+    {
+        path: '/auth',
+        element: <AuthLayout />,
+        children: [
+            {
+                path: 'login',
+                element: <LoginPage />
+            },
+            {
+                path: 'register',
+                element: <RegisterPage />
+            },
+        ],
+    },
+]);
+
+export const App = () => <RouterProvider router={router} />;
+```
+
+## Performance
+
+### Optimisations React
+- Utiliser `React.memo` pour les composants purs
+- `useMemo` et `useCallback` pour les calculs coûteux
+- Lazy loading avec `React.lazy` et `Suspense`
+- Code splitting par routes
+
+### Bundle Optimization
+- Tree shaking automatique avec Vite
+- Dynamic imports pour le code splitting
+- Optimisation des images et assets
+- Mise en cache intelligente
+
+## Accessibilité
+
+### Bonnes Pratiques
+- Attributes ARIA appropriés
+- Navigation clavier
+- Focus management
+- Contraste des couleurs
+- Textes alternatifs pour les images
+
+### Semantic HTML
+```typescript
+export const AccessibleButton = ({ children, ...props }) => {
+    return (
+        <button
+            type="button"
+            aria-label="Descriptive label"
+            aria-pressed={isPressed}
+            {...props}
+        >
+            {children}
+        </button>
+    );
+};
+
+```

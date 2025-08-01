@@ -1,0 +1,16 @@
+[
+    {
+        "name": "console",
+        "description": "Console command",
+        "file": "./consoleCommand.ts",
+        "cronExpression": "*/60 * * * * *",
+        "isEnabled": true
+    },
+    {
+        "name": "cleanTokens",
+        "description": "Command to clean expired tokens older than 3 months",
+        "file": "./cleanTokensCommand.ts",
+        "cronExpression": "0 0 * * *",
+        "isEnabled": true
+    }
+]

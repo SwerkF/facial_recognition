@@ -1,0 +1,201 @@
+services:
+  database:
+    image: mysql:8.0
+    container_name: fastify-mysql-dev
+    restart: unless-stopped
+    environment:
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:-password}
+      MYSQL_DATABASE: ${MYSQL_DATABASE:-fastify_db}
+      MYSQL_USER: ${MYSQL_USER:-fastify}
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD:-password}
+    ports:
+      - "3306:3306"
+    volumes:
+      - mysql_data:/var/lib/mysql
+    networks:
+      - fastify-network
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "mysqladmin",
+          "ping",
+          "-h",
+          "localhost",
+          "-u",
+          "root",
+          "-p${MYSQL_ROOT_PASSWORD:-password}",
+        ]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  backend:
+    build:
+      context: ..
+      dockerfile: ./docker/backend/Dockerfile.dev
+    container_name: fastify-backend-dev
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    volumes:
+      - ../backend:/app/backend
+      - ../shared:/app/shared
+      - backend_node_modules:/app/backend/node_modules
+      - shared_node_modules:/app/shared/node_modules
+    env_file:
+      - ../backend/.env.docker.dev
+    depends_on:
+      database:
+        condition: service_healthy
+    command: >
+      sh -c "
+        cd /app/backend &&
+        pnpm dev
+      "
+    networks:
+      - fastify-network
+
+  frontend:
+    build:
+      context: ..
+      dockerfile: ./docker/frontend/Dockerfile.dev
+    container_name: fastify-frontend-dev
+    restart: unless-stopped
+    ports:
+      - "5173:5173"
+    volumes:
+      - ../frontend:/app/frontend
+      - ../shared:/app/shared
+      - frontend_node_modules:/app/frontend/node_modules
+      - shared_node_modules:/app/shared/node_modules
+    environment:
+      - VITE_API_URL=http://localhost:3000
+      - NODE_ENV=development
+    command: pnpm dev -- --host 0.0.0.0
+    networks:
+      - fastify-network
+    depends_on:
+      - backend
+
+  minio:
+    image: minio/minio
+    container_name: fastify-minio-dev
+    restart: unless-stopped
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    environment:
+      MINIO_ROOT_USER: minioadmin
+      MINIO_ROOT_PASSWORD: minioadmin
+    volumes:
+      - minio_data:/data
+    command: server --console-address ":9001" /data
+    networks:
+      - fastify-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
+      interval: 5s
+      timeout: 5s
+      retries: 3
+
+  minio-setup:
+    image: minio/mc
+    depends_on:
+      minio:
+        condition: service_started
+    entrypoint: >
+      /bin/sh -c "
+      sleep 5;
+      /usr/bin/mc config host add myminio http://minio:9000 minioadmin minioadmin;
+      /usr/bin/mc mb myminio/fastify --ignore-existing;
+      /usr/bin/mc policy set public myminio/fastify;
+      exit 0;
+      "
+    networks:
+      - fastify-network
+
+  mailhog:
+    image: mailhog/mailhog
+    container_name: fastify-mailhog-dev
+    ports:
+      - "1025:1025" # Port SMTP
+      - "8025:8025" # Interface Web
+    networks:
+      - fastify-network
+
+  grafana:
+    image: grafana/grafana:latest
+    container_name: fastify-grafana-dev
+    ports:
+      - "3001:3000"
+    volumes:
+      - grafana_data:/var/lib/grafana
+      - ./grafana-provisioning/:/etc/grafana/provisioning/
+      - ./grafana-provisioning/dashboards:/etc/grafana/provisioning/dashboards
+    environment:
+      - GF_SECURITY_ADMIN_USER=admin
+      - GF_SECURITY_ADMIN_PASSWORD=admin
+      - GF_DASHBOARDS_DEFAULT_HOME_DASHBOARD_PATH=/etc/grafana/provisioning/dashboards/docker-metrics.json
+    networks:
+      - fastify-network
+    depends_on:
+      - loki
+
+  loki:
+    image: grafana/loki:latest
+    container_name: fastify-loki-dev
+    ports:
+      - "3100:3100"
+    command: -config.file=/etc/loki/local-config.yaml
+    networks:
+      - fastify-network
+    volumes:
+      - loki_data:/loki
+
+  redis:
+    image: redis:7-alpine
+    container_name: fastify-redis-dev
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+    command: redis-server --appendonly yes --requirepass ${REDIS_PASSWORD:-redispassword}
+    volumes:
+      - redis_data:/data
+    networks:
+      - fastify-network
+    healthcheck:
+      test: ["CMD", "redis-cli", "--raw", "incr", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  phpmyadmin:
+    image: phpmyadmin/phpmyadmin
+    container_name: fastify-phpmyadmin-dev
+    ports:
+      - "8080:80"
+    environment:
+      - PMA_HOST=database
+      - PMA_PORT=3306
+      - MYSQL_ROOT_PASSWORD=${MYSQL_ROOT_PASSWORD:-password}
+      - PMA_USER=${MYSQL_USER:-fastify}
+      - PMA_PASSWORD=${MYSQL_PASSWORD:-password}
+    depends_on:
+      - database
+    networks:
+      - fastify-network
+
+networks:
+  fastify-network:
+    driver: bridge
+
+volumes:
+  mysql_data:
+  minio_data:
+  backend_node_modules:
+  frontend_node_modules:
+  shared_node_modules:
+  grafana_data:
+  loki_data:
+  redis_data:

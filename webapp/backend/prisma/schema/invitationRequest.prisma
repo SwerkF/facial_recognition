@@ -1,0 +1,28 @@
+model InvitationRequest {
+    id String @id @default(uuid())
+    email String @unique
+    type String @default("USER")
+    status InvitationRequestStatus @default(PENDING)
+    invitedById String @map("invited_by_id")
+    userId String? @map("user_id")
+    tokenId String? @unique @map("token_id")
+    token Token? @relation("TokenInvitation", fields: [tokenId], references: [id])
+    invitedAt DateTime @default(now()) @map("invited_at")
+    registeredAt DateTime? @map("registered_at")
+
+    user User? @relation("InvitedUser", fields: [userId], references: [id])
+    invitedBy User @relation("InviterUser", fields: [invitedById], references: [id])
+    @@map("invitation_requests")
+}
+
+enum InvitationRequestStatus {
+    PENDING
+    ACCEPTED
+    EXPIRED
+}
+
+enum InvitationRequestType {
+    USER
+    ADMIN
+}
+

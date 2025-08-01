@@ -1,0 +1,20 @@
+FROM node:slim
+
+# Installer pnpm globalement
+RUN npm install -g pnpm
+
+WORKDIR /app
+
+# Copier les fichiers package.json et le workspace yaml
+COPY pnpm-workspace.yaml ./
+COPY package.json ./
+COPY frontend/package.json ./frontend/
+COPY shared/package.json ./shared/
+
+# Installer les dépendances avec pnpm
+RUN pnpm install
+
+# Le répertoire de travail final
+WORKDIR /app/frontend
+
+# Les volumes seront montés lors de l'exécution
