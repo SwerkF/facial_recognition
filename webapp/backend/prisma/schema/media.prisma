@@ -1,0 +1,28 @@
+model Media {
+  id             String    @id @default(uuid())
+  url            String    @unique // Stores MinIO filename, not full URL (URLs are generated on-demand)
+  filename       String
+  size           Int
+  libelle        String?
+  mimeType      String    @map("mime_type")
+  type           MediaType @default(PNG)
+  createdAt     DateTime  @default(now()) @map("created_at")
+
+  faceVerifications FaceVerification[] @relation("referenceImage")
+  uploadedFaceVerifications FaceVerification[] @relation("uploadedImage")
+
+  @@map("medias")
+}
+
+enum MediaType {
+  PNG
+  JPG
+  JPEG
+  WEBP
+  GIF
+  SVG
+  TIFF
+  BMP
+}
+
+
